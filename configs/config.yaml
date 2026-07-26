@@ -1,0 +1,15 @@
+data:
+  raw_dir: data/raw/ml-latest-small
+  processed_dir: data/processed
+  ratings_file: ratings.csv
+  movies_file: movies.csv
+
+split:
+  test_size: 0.2
+  random_state: 42
+
+evaluation:
+  primary_metric: rmse
+
+logging:
+  level: INFO
