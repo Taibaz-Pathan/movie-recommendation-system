@@ -1,0 +1,120 @@
+<meta charset="utf-8"><h1>Project Progress Report — Weeks 1 to 4</h1>
+<p><strong>Project Title:</strong> Movie Recommendation System Using Collaborative Filtering<br />
+<strong>Student:</strong> Taibaz Pathan<br />
+<strong>Student ID:</strong> 284085<br />
+<strong>University:</strong> Frankfurt University of Applied Sciences<br />
+<strong>Supervisor:</strong> Prof. Dr. Andreas Pech
+<strong>Report Date:</strong> 02 June 2026<br />
+<strong>Project Start:</strong> 07 May 2026  </p>
+<hr />
+<h2>Overview</h2>
+<p>This report summarises the technical progress made during the first four weeks of the project. The goal of the project is to build and evaluate a Movie Recommendation System using User-Based and Item-Based Collaborative Filtering on the MovieLens dataset. Weeks 1 through 4 cover the foundation of the project: environment setup, exploratory data analysis, data preprocessing, and implementation of core similarity metrics from scratch.</p>
+<hr />
+<h2>Week 1 — Project Setup and Environment</h2>
+<p>The project repository was initialised with a structured folder layout following standard Python packaging conventions. The key components built this week were:</p>
+<ul>
+<li>A virtual environment with all required dependencies pinned to specific versions (NumPy, Pandas, SciPy, scikit-learn, Matplotlib, Seaborn, Jupyter, pytest)</li>
+<li>A centralised configuration file (<code>configs/config.yaml</code>) for dataset paths, split parameters, and logging settings</li>
+<li>A data loading module (<code>src/data/loader.py</code>) that reads the MovieLens CSV files and converts the Unix timestamp column to a readable datetime format</li>
+<li>Skeleton classes for User-Based CF and Item-Based CF (<code>src/models/ubcf.py</code>, <code>src/models/ibcf.py</code>)</li>
+<li>An evaluation metrics module (<code>src/evaluation/metrics.py</code>) with RMSE and MAE functions</li>
+<li>A test suite in <code>tests/</code> with 17 passing unit tests covering the loader and metrics modules</li>
+<li>Git repository initialised with the first commit on branch <code>main</code></li>
+</ul>
+<p>The dataset used throughout the project is the <strong>MovieLens ml-latest-small</strong> dataset from GroupLens Research (100,836 ratings, 610 users, 9,742 movies).</p>
+<hr />
+<h2>Week 2 — Exploratory Data Analysis</h2>
+<p>A Jupyter notebook (<code>notebooks/eda.ipynb</code>) was produced covering eight analysis sections. Seven figures were generated and saved to <code>reports/figures/</code>. The key findings are summarised below.</p>
+<p><strong>Rating Distribution</strong><br />
+The mean rating is 3.50, above the theoretical midpoint of 2.75. Users show a clear positive bias — they tend to rate movies they chose to watch and enjoyed. Whole-star ratings (1.0, 2.0, 3.0, 4.0, 5.0) are used significantly more than half-star ratings. This bias will be addressed through mean-centring in the CF models.</p>
+<p><strong>User Activity</strong><br />
+The distribution of ratings per user is heavily skewed. One user has over 2,000 ratings while the median user has only 68. This long-tail behaviour means that Pearson correlation will be unreliable for low-activity users due to insufficient co-rated items.</p>
+<p><strong>Movie Popularity</strong><br />
+A small number of blockbuster films (Forrest Gump, The Shawshank Redemption, Pulp Fiction) account for a disproportionate share of ratings. The median movie has only 3 ratings, confirming a strong long-tail effect. Movies with fewer than 20 ratings will be filtered out before model training.</p>
+<p><strong>Matrix Sparsity</strong><br />
+Only 1.7% of the 610 × 9,724 user-item matrix is filled. At 98.3% sparsity, most user pairs share very few co-rated movies. This directly motivates the use of a minimum co-rating threshold (min_support) when computing similarity.</p>
+<p><strong>Temporal Patterns</strong><br />
+Ratings span 1996 to 2018. Activity peaked around 2000 and has been more evenly distributed since. Average rating per year remains stable at approximately 3.5.</p>
+<hr />
+<h2>Week 3 — Data Preprocessing</h2>
+<p>A preprocessing module (<code>src/data/preprocessor.py</code>) was built with four functions:</p>
+<p><strong>filter_ratings()</strong><br />
+Removes users and movies that fall below a minimum rating count threshold. Filtering is applied iteratively until convergence to handle cases where removing sparse movies makes some users drop below the threshold. With thresholds of 20 ratings per user and 20 per movie, the dataset reduces from 100,836 to 67,020 ratings, covering 566 users and 1,286 movies.</p>
+<p><strong>build_user_item_matrix()</strong><br />
+Constructs a pivot table with users as rows and movies as columns. Missing entries are represented as NaN. After filtering, the matrix has 566 × 1,286 dimensions with 92.6% sparsity — notably lower than the raw dataset because rare movies have been removed.</p>
+<p><strong>train_test_split_per_user()</strong><br />
+Splits ratings on a per-user basis: for each user, 20% of their ratings are randomly held out for the test set and 80% are kept for training. This guarantees that every user appears in both splits, which is essential for evaluating CF models. The result is 53,614 training ratings and 13,406 test ratings. The random seed is fixed at 42 for reproducibility.</p>
+<p><strong>save_splits()</strong><br />
+Saves the train and test DataFrames as CSV files to <code>data/processed/</code>.</p>
+<p>A test suite of 18 unit tests was written for this module, all passing.</p>
+<hr />
+<h2>Week 4 — Similarity Metrics from Scratch</h2>
+<p>A dedicated similarity module (<code>src/utils/similarity.py</code>) was implemented using NumPy only — no pandas <code>.corr()</code> or scikit-learn functions were used.</p>
+<p><strong>cosine_similarity(u, v)</strong><br />
+Computes cosine similarity between two rating vectors. Only positions where both vectors are non-NaN (i.e. both users rated the same item) are included. Returns 0.0 if there are no co-rated items.</p>
+<p><strong>pearson_similarity(u, v, min_support)</strong><br />
+Computes the exact Pearson correlation, mean-centring each vector over the co-rated items only (not each user's full rating history). Returns 0.0 if the number of co-rated items is below min_support. This is the formulation described in the original collaborative filtering literature (Resnick et al., 1994).</p>
+<p><strong>cosine_similarity_matrix(matrix)</strong><br />
+Efficiently computes the full pairwise cosine similarity matrix using vectorised NumPy operations. NaN values are replaced with 0 before L2 normalisation.</p>
+<p><strong>pearson_similarity_matrix(matrix, min_support)</strong><br />
+Computes the full pairwise Pearson similarity matrix. Each row is mean-centred using its own overall mean. Pairs with fewer co-rated items than min_support are set to 0.0. This vectorised implementation avoids nested Python loops and runs efficiently on the full 566 × 1,286 matrix.</p>
+<p>22 unit tests were written and all pass.</p>
+<hr />
+<h2>Current Test Suite Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Tests</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>src/data/loader.py</td>
+<td>7</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td>src/evaluation/metrics.py</td>
+<td>10</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td>src/data/preprocessor.py</td>
+<td>18</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td>src/utils/similarity.py</td>
+<td>22</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>57</strong></td>
+<td><strong>All passing</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Repository Structure (current)</h2>
+<p><code>movie-recsys/
+├── configs/config.yaml
+├── data/processed/          train.csv, test.csv
+├── notebooks/eda.ipynb      Week 2 EDA
+├── reports/figures/         7 EDA figures (PNG)
+├── src/
+│   ├── data/loader.py       dataset loading
+│   ├── data/preprocessor.py filtering, matrix, split
+│   ├── models/ubcf.py       User-Based CF skeleton
+│   ├── models/ibcf.py       Item-Based CF skeleton
+│   ├── evaluation/metrics.py RMSE, MAE
+│   └── utils/similarity.py  cosine and Pearson from scratch
+└── tests/                   57 unit tests</code></p>
+<hr />
+<h2>Plan for Weeks 5 and 6</h2>
+<p><strong>Week 5</strong> — Complete the User-Based CF implementation by wiring the custom similarity module into the UBCF class (replacing the current pandas-based approach) and evaluating predictions on the held-out test set using RMSE and MAE.</p>
+<p><strong>Week 6</strong> — Complete the Item-Based CF implementation in the same way and run initial comparisons between UBCF and IBCF.</p>
+<hr />
+<p><em>All code is version-controlled in a local Git repository. Four commits have been made, one per week milestone.</em></p>
