@@ -1,190 +1,201 @@
-"""Item-Based Collaborative Filtering model."""
+"""
+src/models/ibcf.py
+------------------
+Item-Based Collaborative Filtering model.
+"""
 
 import numpy as np
 import pandas as pd
+from typing import List, Tuple, Optional
+from src.utils.similarity import cosine_similarity_matrix
 
 
 class ItemBasedCF:
-    """Item-Based Collaborative Filtering recommender.
+    """
+    Item-Based Collaborative Filtering recommender.
 
-    Predicts ratings and generates top-N recommendations by finding
-    the k most similar items (neighbours) to a target movie and
-    computing a similarity-weighted average of the user's own ratings
-    on those neighbour items.
+    Uses adjusted cosine similarity (ratings mean-centred per user
+    before computing item-item similarity) as recommended by
+    Sarwar et al. (2001).
 
-    IBCF is generally faster at prediction time than UBCF because the
-    item-item similarity matrix is pre-computed once during fit().
-
-    Args:
-        k: Number of nearest item neighbours to consider.
-        similarity: Similarity measure to use ('cosine' or 'pearson').
-        min_support: Minimum number of users who must have co-rated two
-            items for their similarity to be considered valid (Pearson only).
-        min_k: Minimum number of valid item neighbours required to make a
-            prediction. Falls back to the user's mean rating otherwise.
+    Parameters
+    ----------
+    k : int
+        Number of nearest neighbour items to use for prediction.
+    min_support : int
+        Minimum number of users who must have co-rated both items
+        for their similarity to be considered valid.
     """
 
-    def __init__(
-        self,
-        k: int = 20,
-        similarity: str = "cosine",
-        min_support: int = 5,
-        min_k: int = 2,
-    ) -> None:
+    def __init__(self, k: int = 20, min_support: int = 5) -> None:
         self.k = k
-        self.similarity = similarity
         self.min_support = min_support
-        self.min_k = min_k
-        self._ratings_matrix = None
-        self._item_similarity = None
-        self._user_means = None
 
-    def fit(self, ratings_matrix: pd.DataFrame) -> "ItemBasedCF":
-        """Fit the model by pre-computing the item-item similarity matrix.
+        self._matrix: Optional[pd.DataFrame] = None
+        self._sim_matrix: Optional[np.ndarray] = None
+        self._user_means: Optional[pd.Series] = None
+        self._users: Optional[np.ndarray] = None
+        self._movies: Optional[np.ndarray] = None
 
-        For cosine similarity, item vectors are L2-normalised before the
-        dot product so that rating scale differences don't dominate.
-        For Pearson, pandas corr() is used with min_periods to enforce
-        the min_support threshold.
-
-        Args:
-            ratings_matrix: DataFrame with users as rows, items as columns,
-                and ratings as values. Missing ratings must be NaN.
-
-        Returns:
-            self, to allow method chaining.
-
-        Raises:
-            ValueError: If an unsupported similarity metric is specified.
+    def fit(self, ratings: pd.DataFrame) -> "ItemBasedCF":
         """
-        self._ratings_matrix = ratings_matrix
-        self._user_means = ratings_matrix.mean(axis=1)
+        Fit the model on training ratings.
 
-        if self.similarity == "cosine":
-            # Each column is an item vector over users; fill NaN with 0
-            filled = ratings_matrix.fillna(0).values.astype(float)
-            # Normalise each item vector (column) by its L2 norm
-            norms = np.linalg.norm(filled, axis=0, keepdims=True)
-            norms[norms == 0] = 1.0
-            normed = filled / norms
-            # Item-item cosine similarity: (n_items x n_items)
-            sim = normed.T @ normed
-            self._item_similarity = pd.DataFrame(
-                sim,
-                index=ratings_matrix.columns,
-                columns=ratings_matrix.columns,
-            )
+        Parameters
+        ----------
+        ratings : pd.DataFrame
+            DataFrame with columns: userId, movieId, rating.
 
-        elif self.similarity == "pearson":
-            # corr() on columns gives item-item Pearson correlation.
-            # min_periods enforces min_support: NaN when fewer users co-rated.
-            self._item_similarity = ratings_matrix.corr(
-                method="pearson", min_periods=self.min_support
-            )
+        Returns
+        -------
+        self
+        """
+        self._matrix = ratings.pivot_table(
+            index="userId", columns="movieId", values="rating"
+        )
+        self._users = self._matrix.index.to_numpy()
+        self._movies = self._matrix.columns.to_numpy()
+        self._user_means = self._matrix.mean(axis=1)
 
-        else:
-            raise ValueError(
-                f"Unknown similarity metric: '{self.similarity}'. "
-                "Choose 'cosine' or 'pearson'."
-            )
+        # Adjusted cosine: mean-centre each USER's row before
+        # computing similarity between ITEM columns.
+        centred = self._matrix.sub(self._user_means, axis=0)
+        centred_np = centred.to_numpy()
+        centred_np = np.nan_to_num(centred_np, nan=0.0)
+
+        # Co-rating counts per item pair, to apply min_support
+        rated_mask = (~self._matrix.isna()).to_numpy().astype(float)
+        co_rating_counts = rated_mask.T @ rated_mask
+
+        # Item-item similarity via cosine on the centred, item-column matrix
+        self._sim_matrix = cosine_similarity_matrix(centred_np.T)
+
+        # Zero out pairs below min_support
+        self._sim_matrix[co_rating_counts < self.min_support] = 0.0
 
         return self
 
+    def _get_user_index(self, user_id: int) -> int:
+        idx = np.where(self._users == user_id)[0]
+        if len(idx) == 0:
+            raise ValueError(f"User {user_id} not found in training data.")
+        return idx[0]
+
+    def _get_movie_index(self, movie_id: int) -> int:
+        idx = np.where(self._movies == movie_id)[0]
+        if len(idx) == 0:
+            raise ValueError(f"Movie {movie_id} not found in training data.")
+        return idx[0]
+
     def predict(self, user_id: int, movie_id: int) -> float:
-        """Predict the rating a user would give to a movie.
-
-        Finds the k items most similar to the target movie that the user
-        has already rated, then computes a similarity-weighted average:
-
-            pred(u, i) = sum(sim(i, j) * r_uj) / sum(|sim(i, j)|)
-
-        Falls back to the user's mean rating when fewer than min_k valid
-        item neighbours are found.
-
-        Args:
-            user_id: The target user's identifier.
-            movie_id: The target movie's identifier.
-
-        Returns:
-            Predicted rating clipped to [0.5, 5.0].
-
-        Raises:
-            RuntimeError: If fit() has not been called.
-            ValueError: If user_id or movie_id is not in the training data.
         """
-        if self._ratings_matrix is None:
-            raise RuntimeError("Model is not fitted. Call fit() first.")
-        if user_id not in self._ratings_matrix.index:
-            raise ValueError(f"user_id {user_id} not found in training data.")
-        if movie_id not in self._ratings_matrix.columns:
-            raise ValueError(f"movie_id {movie_id} not found in training data.")
+        Predict the rating for a (user, movie) pair.
 
-        user_mean = self._user_means[user_id]
+        Parameters
+        ----------
+        user_id : int
+        movie_id : int
 
-        # Similarities from target movie to all other items (drop self, drop NaN)
-        sim_scores = self._item_similarity[movie_id].drop(index=movie_id).dropna()
+        Returns
+        -------
+        float
+            Predicted rating, clipped to [0.5, 5.0].
+            Falls back to the user's mean rating if no valid
+            neighbour items are found.
+        """
+        u_idx = self._get_user_index(user_id)
+        m_idx = self._get_movie_index(movie_id)
 
-        # Keep only items that this user has actually rated
-        user_rated = self._ratings_matrix.loc[user_id].dropna().index
-        common = sim_scores.index.intersection(user_rated)
+        user_mean = self._user_means.iloc[u_idx]
+        user_ratings = self._matrix.iloc[u_idx].to_numpy()
 
-        if len(common) < self.min_k:
+        # Similarities of target item to all other items
+        similarities = self._sim_matrix[m_idx].copy()
+        similarities[m_idx] = 0.0  # exclude self
+
+        # Only keep items the user has actually rated
+        rated_mask = ~np.isnan(user_ratings)
+        similarities[~rated_mask] = 0.0
+
+        # Top-K most similar rated items
+        top_k_idx = np.argsort(np.abs(similarities))[::-1][: self.k]
+        top_k_sims = similarities[top_k_idx]
+        top_k_ratings = user_ratings[top_k_idx]
+
+        valid = top_k_sims != 0.0
+        if not valid.any():
             return float(np.clip(user_mean, 0.5, 5.0))
 
-        sim_scores = sim_scores[common]
+        top_k_sims = top_k_sims[valid]
+        top_k_ratings = top_k_ratings[valid]
 
-        # Top-k by absolute similarity, then require positive similarity
-        top_k_idx = sim_scores.abs().nlargest(self.k).index
-        sim_scores = sim_scores[top_k_idx]
-        sim_scores = sim_scores[sim_scores > 0]
-
-        if len(sim_scores) < self.min_k:
-            return float(np.clip(user_mean, 0.5, 5.0))
-
-        user_ratings = self._ratings_matrix.loc[user_id, sim_scores.index]
-
-        numerator = (sim_scores * user_ratings).sum()
-        denominator = sim_scores.abs().sum()
+        numerator = np.sum(top_k_sims * top_k_ratings)
+        denominator = np.sum(np.abs(top_k_sims))
 
         prediction = numerator / denominator
         return float(np.clip(prediction, 0.5, 5.0))
 
-    def recommend(self, user_id: int, n: int = 10, min_movie_ratings: int = 20) -> list:
-        """Generate top-N movie recommendations for a user.
-
-        Only movies the user has not yet rated are considered. Movies with
-        fewer than min_movie_ratings total ratings are excluded to avoid
-        recommending obscure titles with little neighbour support.
-
-        Args:
-            user_id: The target user's identifier.
-            n: Number of recommendations to return.
-            min_movie_ratings: Minimum number of users who must have rated
-                a movie for it to be eligible for recommendation.
-
-        Returns:
-            List of (movie_id, predicted_rating) tuples sorted by
-            predicted rating descending, length at most n.
-
-        Raises:
-            RuntimeError: If fit() has not been called.
-            ValueError: If user_id is not in the training data.
+    def recommend(self, user_id: int, n: int = 10) -> List[Tuple[int, float]]:
         """
-        if self._ratings_matrix is None:
-            raise RuntimeError("Model is not fitted. Call fit() first.")
-        if user_id not in self._ratings_matrix.index:
-            raise ValueError(f"user_id {user_id} not found in training data.")
+        Recommend top-N unseen movies for a user.
 
-        user_row = self._ratings_matrix.loc[user_id]
+        Parameters
+        ----------
+        user_id : int
+        n : int
 
-        # Popularity filter: only consider movies with enough total ratings
-        rating_counts = self._ratings_matrix.count()
-        popular_movies = rating_counts[rating_counts >= min_movie_ratings].index
-        unrated = user_row[user_row.isna()].index.intersection(popular_movies).tolist()
+        Returns
+        -------
+        List of (movieId, predicted_rating) tuples, sorted descending.
+        """
+        u_idx = self._get_user_index(user_id)
+        user_row = self._matrix.iloc[u_idx]
+        unrated_movies = user_row[user_row.isna()].index.tolist()
 
-        predictions = [
-            (movie_id, self.predict(user_id, movie_id))
-            for movie_id in unrated
-        ]
+        predictions = []
+        for movie_id in unrated_movies:
+            try:
+                pred = self.predict(user_id, movie_id)
+                predictions.append((movie_id, pred))
+            except ValueError:
+                continue
+
         predictions.sort(key=lambda x: x[1], reverse=True)
         return predictions[:n]
+
+    def evaluate(self, test_ratings: pd.DataFrame) -> dict:
+        """
+        Evaluate the model on a test set using RMSE and MAE.
+
+        Parameters
+        ----------
+        test_ratings : pd.DataFrame
+            DataFrame with columns: userId, movieId, rating.
+
+        Returns
+        -------
+        dict with keys 'rmse', 'mae', 'n_predictions'.
+        """
+        from src.evaluation.metrics import rmse, mae
+
+        y_true, y_pred = [], []
+
+        for _, row in test_ratings.iterrows():
+            user_id = int(row["userId"])
+            movie_id = int(row["movieId"])
+
+            if (user_id not in self._users) or (movie_id not in self._movies):
+                continue
+
+            try:
+                pred = self.predict(user_id, movie_id)
+                y_true.append(row["rating"])
+                y_pred.append(pred)
+            except ValueError:
+                continue
+
+        return {
+            "rmse": rmse(y_true, y_pred),
+            "mae": mae(y_true, y_pred),
+            "n_predictions": len(y_true),
+        }
