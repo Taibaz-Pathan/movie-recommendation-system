@@ -180,3 +180,39 @@ class UserBasedCF:
         ]
         predictions.sort(key=lambda x: x[1], reverse=True)
         return predictions[:n]
+
+    def evaluate(self, test_ratings: pd.DataFrame) -> dict:
+        """Evaluate the model on a test set using RMSE and MAE.
+
+        Args:
+            test_ratings: DataFrame with columns userId, movieId, rating.
+
+        Returns:
+            dict with keys 'rmse', 'mae', 'n_predictions'.
+
+        Raises:
+            RuntimeError: If fit() has not been called.
+        """
+        if self._ratings_matrix is None:
+            raise RuntimeError("Model is not fitted. Call fit() first.")
+
+        from src.evaluation.metrics import mae, rmse
+
+        y_true, y_pred = [], []
+        for _, row in test_ratings.iterrows():
+            user_id = int(row["userId"])
+            movie_id = int(row["movieId"])
+
+            if user_id not in self._ratings_matrix.index:
+                continue
+            if movie_id not in self._ratings_matrix.columns:
+                continue
+
+            y_true.append(row["rating"])
+            y_pred.append(self.predict(user_id, movie_id))
+
+        return {
+            "rmse": rmse(y_true, y_pred),
+            "mae": mae(y_true, y_pred),
+            "n_predictions": len(y_true),
+        }
