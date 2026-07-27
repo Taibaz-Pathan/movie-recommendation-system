@@ -36,6 +36,7 @@ class UserBasedCF:
         self._ratings_matrix = None
         self._sim_matrix = None
         self._user_means = None
+        self._users = None
 
     def fit(self, ratings_matrix: pd.DataFrame) -> "UserBasedCF":
         """Fit the model by pre-computing the user-user similarity matrix.
@@ -52,6 +53,7 @@ class UserBasedCF:
         """
         self._ratings_matrix = ratings_matrix
         self._user_means = ratings_matrix.mean(axis=1)
+        self._users = ratings_matrix.index.to_numpy()
 
         if self.similarity == "pearson":
             # min_periods enforces the min_support threshold:
@@ -80,6 +82,72 @@ class UserBasedCF:
 
         return self
 
+    def _predict_with_support(self, user_id: int, movie_id: int) -> tuple:
+        """Predict a rating and report how many valid neighbours backed it.
+
+        Shared internal implementation for predict() and recommend(), so
+        the neighbour-selection logic isn't duplicated and recommend() can
+        break ties using the neighbour count without recomputing it.
+
+        Uses mean-centred weighted average over the k nearest neighbours
+        who have rated the target movie:
+
+            pred(u, i) = mean_u
+                         + sum(sim(u,v) * (r_vi - mean_v))
+                           / sum(|sim(u,v)|)
+
+        Falls back to the user's mean rating when fewer than min_k
+        valid neighbours are found.
+
+        Args:
+            user_id: The target user's identifier.
+            movie_id: The target movie's identifier.
+
+        Returns:
+            Tuple of (predicted_rating clipped to [0.5, 5.0], n_neighbours
+            actually used). n_neighbours is 0 when the fallback path is taken.
+
+        Raises:
+            RuntimeError: If fit() has not been called.
+            ValueError: If user_id or movie_id is not in the training data.
+        """
+        if self._ratings_matrix is None:
+            raise RuntimeError("Model is not fitted. Call fit() first.")
+        if user_id not in self._ratings_matrix.index:
+            raise ValueError(f"user_id {user_id} not found in training data.")
+        if movie_id not in self._ratings_matrix.columns:
+            raise ValueError(f"movie_id {movie_id} not found in training data.")
+
+        user_mean = self._user_means[user_id]
+
+        # Similarities to all other users (drop self, drop NaN from min_support)
+        sim_scores = self._sim_matrix[user_id].drop(index=user_id).dropna()
+
+        # Keep only neighbours who have rated the target movie
+        rated_by = self._ratings_matrix[movie_id].dropna().index
+        common = sim_scores.index.intersection(rated_by)
+        if len(common) < self.min_k:
+            return float(np.clip(user_mean, 0.5, 5.0)), 0
+
+        sim_scores = sim_scores[common]
+
+        # Top-k by absolute similarity, then require positive correlation
+        top_k_idx = sim_scores.abs().nlargest(self.k).index
+        sim_scores = sim_scores[top_k_idx]
+        sim_scores = sim_scores[sim_scores > 0]
+
+        if len(sim_scores) < self.min_k:
+            return float(np.clip(user_mean, 0.5, 5.0)), 0
+
+        neighbour_ratings = self._ratings_matrix.loc[sim_scores.index, movie_id]
+        neighbour_means = self._user_means[sim_scores.index]
+
+        numerator = (sim_scores * (neighbour_ratings - neighbour_means)).sum()
+        denominator = sim_scores.abs().sum()
+
+        prediction = user_mean + numerator / denominator
+        return float(np.clip(prediction, 0.5, 5.0)), len(sim_scores)
+
     def predict(self, user_id: int, movie_id: int) -> float:
         """Predict the rating a user would give to a movie.
 
@@ -104,42 +172,8 @@ class UserBasedCF:
             RuntimeError: If fit() has not been called.
             ValueError: If user_id or movie_id is not in the training data.
         """
-        if self._ratings_matrix is None:
-            raise RuntimeError("Model is not fitted. Call fit() first.")
-        if user_id not in self._ratings_matrix.index:
-            raise ValueError(f"user_id {user_id} not found in training data.")
-        if movie_id not in self._ratings_matrix.columns:
-            raise ValueError(f"movie_id {movie_id} not found in training data.")
-
-        user_mean = self._user_means[user_id]
-
-        # Similarities to all other users (drop self, drop NaN from min_support)
-        sim_scores = self._sim_matrix[user_id].drop(index=user_id).dropna()
-
-        # Keep only neighbours who have rated the target movie
-        rated_by = self._ratings_matrix[movie_id].dropna().index
-        common = sim_scores.index.intersection(rated_by)
-        if len(common) < self.min_k:
-            return float(np.clip(user_mean, 0.5, 5.0))
-
-        sim_scores = sim_scores[common]
-
-        # Top-k by absolute similarity, then require positive correlation
-        top_k_idx = sim_scores.abs().nlargest(self.k).index
-        sim_scores = sim_scores[top_k_idx]
-        sim_scores = sim_scores[sim_scores > 0]
-
-        if len(sim_scores) < self.min_k:
-            return float(np.clip(user_mean, 0.5, 5.0))
-
-        neighbour_ratings = self._ratings_matrix.loc[sim_scores.index, movie_id]
-        neighbour_means = self._user_means[sim_scores.index]
-
-        numerator = (sim_scores * (neighbour_ratings - neighbour_means)).sum()
-        denominator = sim_scores.abs().sum()
-
-        prediction = user_mean + numerator / denominator
-        return float(np.clip(prediction, 0.5, 5.0))
+        prediction, _ = self._predict_with_support(user_id, movie_id)
+        return prediction
 
     def recommend(self, user_id: int, n: int = 10, min_movie_ratings: int = 20) -> list:
         """Generate top-N movie recommendations for a user.
@@ -148,6 +182,11 @@ class UserBasedCF:
         fewer than min_movie_ratings total ratings are excluded to avoid
         recommending obscure titles predicted from a single neighbour.
 
+        Candidates are sorted by predicted rating descending. Ties (e.g.
+        multiple predictions clipped to the same ceiling/floor value) are
+        broken deterministically by preferring the prediction backed by
+        more valid neighbours, then by ascending movieId for reproducibility.
+
         Args:
             user_id: The target user's identifier.
             n: Number of recommendations to return.
@@ -155,8 +194,8 @@ class UserBasedCF:
                 a movie for it to be eligible for recommendation.
 
         Returns:
-            List of (movie_id, predicted_rating) tuples sorted by
-            predicted rating descending, length at most n.
+            List of (movie_id, predicted_rating) tuples sorted by predicted
+            rating descending (ties broken as above), length at most n.
 
         Raises:
             RuntimeError: If fit() has not been called.
@@ -175,11 +214,11 @@ class UserBasedCF:
         unrated = user_row[user_row.isna()].index.intersection(popular_movies).tolist()
 
         predictions = [
-            (movie_id, self.predict(user_id, movie_id))
+            (movie_id, *self._predict_with_support(user_id, movie_id))
             for movie_id in unrated
         ]
-        predictions.sort(key=lambda x: x[1], reverse=True)
-        return predictions[:n]
+        predictions.sort(key=lambda x: (-x[1], -x[2], x[0]))
+        return [(movie_id, pred) for movie_id, pred, _ in predictions[:n]]
 
     def evaluate(self, test_ratings: pd.DataFrame) -> dict:
         """Evaluate the model on a test set using RMSE and MAE.

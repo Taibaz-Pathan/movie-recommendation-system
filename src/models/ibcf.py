@@ -34,6 +34,7 @@ class ItemBasedCF:
         self._matrix: Optional[pd.DataFrame] = None
         self._sim_matrix: Optional[np.ndarray] = None
         self._user_means: Optional[pd.Series] = None
+        self._item_means: Optional[pd.Series] = None
         self._users: Optional[np.ndarray] = None
         self._movies: Optional[np.ndarray] = None
 
@@ -56,6 +57,7 @@ class ItemBasedCF:
         self._users = self._matrix.index.to_numpy()
         self._movies = self._matrix.columns.to_numpy()
         self._user_means = self._matrix.mean(axis=1)
+        self._item_means = self._matrix.mean(axis=0)
 
         # Adjusted cosine: mean-centre each USER's row before
         # computing similarity between ITEM columns.
@@ -87,9 +89,13 @@ class ItemBasedCF:
             raise ValueError(f"Movie {movie_id} not found in training data.")
         return idx[0]
 
-    def predict(self, user_id: int, movie_id: int) -> float:
+    def _predict_with_support(self, user_id: int, movie_id: int) -> Tuple[float, int]:
         """
-        Predict the rating for a (user, movie) pair.
+        Predict a rating and report how many valid neighbour items backed it.
+
+        Shared internal implementation for predict() and recommend(), so
+        the neighbour-selection logic isn't duplicated and recommend() can
+        break ties using the neighbour count without recomputing it.
 
         Parameters
         ----------
@@ -98,10 +104,8 @@ class ItemBasedCF:
 
         Returns
         -------
-        float
-            Predicted rating, clipped to [0.5, 5.0].
-            Falls back to the user's mean rating if no valid
-            neighbour items are found.
+        Tuple of (predicted_rating clipped to [0.5, 5.0], n_neighbours used).
+        n_neighbours is 0 when the fallback path (no valid neighbour items) is taken.
         """
         u_idx = self._get_user_index(user_id)
         m_idx = self._get_movie_index(movie_id)
@@ -124,20 +128,47 @@ class ItemBasedCF:
 
         valid = top_k_sims != 0.0
         if not valid.any():
-            return float(np.clip(user_mean, 0.5, 5.0))
+            return float(np.clip(user_mean, 0.5, 5.0)), 0
 
         top_k_sims = top_k_sims[valid]
         top_k_ratings = top_k_ratings[valid]
+        top_k_item_means = self._item_means.iloc[top_k_idx].to_numpy()[valid]
 
-        numerator = np.sum(top_k_sims * top_k_ratings)
+        numerator = np.sum(top_k_sims * (top_k_ratings - top_k_item_means))
         denominator = np.sum(np.abs(top_k_sims))
 
-        prediction = numerator / denominator
-        return float(np.clip(prediction, 0.5, 5.0))
+        target_item_mean = self._item_means.iloc[m_idx]
+        prediction = target_item_mean + numerator / denominator
+        return float(np.clip(prediction, 0.5, 5.0)), int(valid.sum())
+
+    def predict(self, user_id: int, movie_id: int) -> float:
+        """
+        Predict the rating for a (user, movie) pair.
+
+        Parameters
+        ----------
+        user_id : int
+        movie_id : int
+
+        Returns
+        -------
+        float
+            Predicted rating, clipped to [0.5, 5.0].
+            Falls back to the user's mean rating if no valid
+            neighbour items are found.
+        """
+        prediction, _ = self._predict_with_support(user_id, movie_id)
+        return prediction
 
     def recommend(self, user_id: int, n: int = 10) -> List[Tuple[int, float]]:
         """
         Recommend top-N unseen movies for a user.
+
+        Candidates are sorted by predicted rating descending. Ties (e.g.
+        multiple predictions clipped to the same ceiling/floor value) are
+        broken deterministically by preferring the prediction backed by
+        more valid neighbour items, then by ascending movieId for
+        reproducibility.
 
         Parameters
         ----------
@@ -146,7 +177,8 @@ class ItemBasedCF:
 
         Returns
         -------
-        List of (movieId, predicted_rating) tuples, sorted descending.
+        List of (movieId, predicted_rating) tuples, sorted descending
+        (ties broken as above).
         """
         u_idx = self._get_user_index(user_id)
         user_row = self._matrix.iloc[u_idx]
@@ -155,13 +187,13 @@ class ItemBasedCF:
         predictions = []
         for movie_id in unrated_movies:
             try:
-                pred = self.predict(user_id, movie_id)
-                predictions.append((movie_id, pred))
+                pred, n_neighbours = self._predict_with_support(user_id, movie_id)
+                predictions.append((movie_id, pred, n_neighbours))
             except ValueError:
                 continue
 
-        predictions.sort(key=lambda x: x[1], reverse=True)
-        return predictions[:n]
+        predictions.sort(key=lambda x: (-x[1], -x[2], x[0]))
+        return [(movie_id, pred) for movie_id, pred, _ in predictions[:n]]
 
     def evaluate(self, test_ratings: pd.DataFrame) -> dict:
         """
