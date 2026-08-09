@@ -11,5 +11,18 @@ split:
 evaluation:
   primary_metric: rmse
 
+# Selected via grid search (Week 8) using Precision@10 as primary criterion.
+# RMSE-optimal alternatives were UBCF k=40/min_support=5 (RMSE 0.8371) and
+# IBCF k=20/min_support=3 (RMSE 0.8729) — see
+# reports/hyperparameter_tuning_results.csv for full grid.
+model:
+  ubcf:
+    k: 20
+    similarity: "pearson"
+    min_support: 10
+  ibcf:
+    k: 30
+    min_support: 1
+
 logging:
   level: INFO
