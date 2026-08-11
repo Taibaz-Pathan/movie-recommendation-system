@@ -4,7 +4,7 @@
 
 The train/test matrix used throughout this project has 92.63% sparsity (566 users × 1,286 movies, source: `reports/hyperparameter_tuning_results.csv` fit logs, e.g. `python scripts/analyze_cold_start.py` output for the full baseline). That sparsity figure already reflects a dataset that was deliberately filtered in Week 3: `filter_ratings()` in `src/data/preprocessor.py` applies an iterative `min_user_ratings=20, min_movie_ratings=20` threshold before the train/test split ever happens.
 
-That means every user and movie in this dataset, by construction, already has **at least 20 ratings** somewhere in the full (pre-split) data. The genuinely hardest cold-start case — a brand-new user with zero or one rating, or a brand-new movie nobody has rated yet — was already excluded from the dataset before Week 1's modeling work even started. This week's simulation therefore cannot measure true cold-start behaviour; it can only measure how these models degrade as an *existing, moderately-active* user's visible history is artificially shrunk. See §5 for why this distinction matters.
+That means every user and movie in this dataset, by construction, already has **at least 20 ratings** somewhere in the full (pre-split) data. The genuinely hardest cold-start case — a brand-new user with zero or one rating, or a brand-new movie nobody has rated yet — was already excluded from the dataset before Week 1's modeling work even started. This week's simulation therefore cannot measure true cold-start behaviour; it can only measure how these models degrade as an *existing, moderately-active* user's visible history is artificially shrunk. See §6 for why this distinction matters.
 
 ## 2. Cold-start simulation results (Task 1)
 
@@ -54,7 +54,47 @@ IBCF's item-item similarity matrix, by contrast, is built from co-rating counts 
 
 The sparsity-bucket results reinforce the same asymmetry from a different angle: UBCF, tuned with a high `min_support=10`, actually produces predictions across the full range of neighbour-support levels (from as few as 0-2 up to 20 neighbours), and those low-support predictions are measurably worse (RMSE 1.1087 in the 0-2 bucket vs 0.8236 in 11-20) — a real, quantified cold-start-like penalty. IBCF, tuned with `min_support=1`, essentially never operates in a low-support regime in this dataset at all, which means its Week 8-9-10 headline numbers say nothing about how it would behave if it ever did.
 
-## 5. Limitations of this simulation approach
+## 5. IBCF Non-Monotonicity Investigation
+
+### 5.1 The observed anomaly
+
+As reported in §2 and §4, IBCF's cold-start curve is not monotonic at its deployed configuration (k=30, min_support=1): RMSE improves from max_ratings=1 through 5 (1.2605 → 1.0571 → 1.0388), then **gets worse** at both max_ratings=10 (1.0705) and max_ratings=20 (1.0924) — a rise of +0.0536 over those two steps — before recovering sharply at the full, untruncated dataset (0.8769).
+
+### 5.2 Hypothesis
+
+IBCF's deployed `min_support=1` is extremely permissive: an item pair needs only a single shared rater to be treated as having a valid similarity. The hypothesis is that at moderate truncation levels (10-20 ratings/user), enough new item pairs cross that trivial threshold with thin, noisy support to actively hurt `predict()`'s top-k neighbour selection — before the full dataset's much higher co-rating volume dilutes that noise back out.
+
+### 5.3 Controlled comparison
+
+`scripts/analyze_cold_start.py` was extended to re-run the same truncation sweep for IBCF at k=20/min_support=3 — Week 8's actual RMSE-optimal IBCF configuration (`reports/hyperparameter_tuning_results.csv`, model=IBCF, min RMSE row: k=20, min_support=3, rmse=0.8729), not min_support=5 as originally guessed when this investigation was requested. Results saved to `reports/cold_start_ibcf_min_support3_results.csv`.
+
+| max_ratings | IBCF (min_support=1, deployed) | IBCF (min_support=3, RMSE-optimal) |
+|---|---|---|
+| 1 | 1.2605 | 1.2605 |
+| 3 | 1.0571 | 1.0495 |
+| 5 | 1.0388 | 1.0045 |
+| 10 | 1.0705 | 0.9673 |
+| 20 | 1.0924 | 0.9901 |
+| full | 0.8769 | 0.8729 |
+
+### 5.4 Conclusion
+
+**Partially confirmed.** The non-monotonicity shrinks substantially but does not fully disappear when min_support is raised from 1 to 3:
+
+- At min_support=1, RMSE worsens over **two consecutive steps** (5→10→20), a total rise of **+0.0536**.
+- At min_support=3, RMSE worsens over **one step only** (10→20: 0.9673 → 0.9901), a rise of **+0.0228** — roughly 43% the magnitude of the min_support=1 bump. The 5→10 transition, which broke at min_support=1, correctly improves at min_support=3 (1.0045 → 0.9673).
+
+This is real, evidenced support for the hypothesis — more required co-rating evidence measurably reduces the anomaly — but it is not complete proof that min_support=1 is the *sole* cause, since a smaller residual bump still exists at min_support=3. Something beyond min_support alone (possibly interacting with the k=20 vs k=30 difference between the two configs, which was not isolated separately in this comparison) likely also contributes.
+
+### 5.5 Connection to the Week 8 tuning tradeoff
+
+Week 8's tuning report already flagged that IBCF's Precision@10-optimal configuration (k=30, min_support=1) was chosen over its RMSE-optimal configuration (k=20, min_support=3) specifically because ranking quality was prioritized for a recommender system, on a "thin statistical basis" of very low absolute co-rating requirements. This week's finding is a **concrete, realized consequence of that exact tradeoff**, not a new, unrelated problem: the same permissiveness that helped IBCF's Precision@10 in the full-data regime is directly implicated in its instability under data scarcity. This is worth stating plainly rather than treating as an embarrassing flaw to minimize — it's a genuine, now-quantified cost of the Week 8 deployment choice.
+
+### 5.6 Practical implication
+
+`min_support=1` was selected in Week 8 for its Precision@10 advantage when the *full* training set is available. This week's analysis shows that same setting **degrades gracefully-worse, not gracefully-better, under data scarcity** — RMSE gets measurably worse, not just "less good," as user history shrinks through the 10-20 rating range, before eventually recovering once enough data accumulates. Anyone considering deploying this exact IBCF configuration (k=30, min_support=1) in a genuine cold-start-heavy production scenario (e.g. a growing catalog with many thinly-rated new users) should weigh this against the full-data Precision@10 gain it was chosen for — the RMSE-optimal min_support=3 configuration is a safer choice if new-user/sparse-history traffic is expected to be significant, at the cost of the smaller full-data Precision@10 advantage documented in Week 8.
+
+## 6. Limitations of this simulation approach
 
 1. **This is not real cold-start.** Every "cold" user in this simulation is actually a user who chose to rate 20+ movies (Week 3's filter), and who therefore has a genuine, coherent taste signal even when only 1-3 of their ratings are visible to the model. A real new user with 1 rating has provided that one rating essentially at random relative to their broader taste; a truncated-but-real user's 1 visible rating is a real (if incomplete) sample of a taste profile the underlying ground truth already reflects in the untouched test set. This likely makes the simulation's low-truncation-level results *more optimistic* than genuine new-user cold-start would be.
 2. **Random truncation ignores rating order/recency.** A real new user's early ratings arrive in some order, and future recommender behaviour has to work with only the ratings made so far; this simulation randomly samples from a user's *entire* rating history regardless of timestamp, which could include ratings a genuinely new user wouldn't yet have made.
