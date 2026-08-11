@@ -18,9 +18,18 @@ from src.utils.helpers import load_config
 TRAIN_PATH = os.path.join("data", "processed", "train.csv")
 TEST_PATH = os.path.join("data", "processed", "test.csv")
 RESULTS_PATH = os.path.join("reports", "cold_start_results.csv")
+IBCF_ALT_RESULTS_PATH = os.path.join("reports", "cold_start_ibcf_min_support3_results.csv")
 
 TRUNCATION_LEVELS = [1, 3, 5, 10, 20]
 SEED = 42
+
+# Week 8's RMSE-optimal IBCF config (reports/hyperparameter_tuning_results.csv,
+# model=IBCF, lowest rmse row: k=20, min_support=3, rmse=0.8729). Deployed IBCF
+# uses k=30/min_support=1 (Precision@10-optimal) instead -- this alternate config
+# is used to test whether the very low min_support=1 threshold is responsible for
+# IBCF's cold-start non-monotonicity.
+IBCF_ALT_K = 20
+IBCF_ALT_MIN_SUPPORT = 3
 
 
 def truncate_user_ratings(train: pd.DataFrame, max_ratings: int, seed: int) -> pd.DataFrame:
@@ -79,6 +88,64 @@ def evaluate_at_truncation(
     return model.evaluate(test)
 
 
+def run_truncation_sweep(
+    name: str,
+    model_class,
+    model_kwargs: dict,
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+) -> list:
+    """Run evaluate_at_truncation() across TRUNCATION_LEVELS plus a full baseline.
+
+    Args:
+        name: Label used for progress printing and the 'model' column.
+        model_class: UserBasedCF or ItemBasedCF.
+        model_kwargs: Keyword arguments to construct model_class with.
+        train: Full training ratings DataFrame.
+        test: Full test ratings DataFrame.
+
+    Returns:
+        List of result dicts with keys model, max_ratings, rmse, mae, n_predictions.
+    """
+    rows = []
+    for max_ratings in TRUNCATION_LEVELS:
+        print(f"[{name}] Testing max_ratings={max_ratings}...", flush=True)
+        start = time.time()
+        metrics = evaluate_at_truncation(model_class, model_kwargs, train, test, max_ratings, SEED)
+        elapsed = time.time() - start
+        print(
+            f"  done in {elapsed:.1f}s  "
+            f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
+            flush=True,
+        )
+        rows.append({
+            "model": name,
+            "max_ratings": max_ratings,
+            "rmse": metrics["rmse"],
+            "mae": metrics["mae"],
+            "n_predictions": metrics["n_predictions"],
+        })
+
+    print(f"[{name}] Testing max_ratings=full (no truncation)...", flush=True)
+    start = time.time()
+    metrics = evaluate_at_truncation(model_class, model_kwargs, train, test, None, SEED)
+    elapsed = time.time() - start
+    print(
+        f"  done in {elapsed:.1f}s  "
+        f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
+        flush=True,
+    )
+    rows.append({
+        "model": name,
+        "max_ratings": "full",
+        "rmse": metrics["rmse"],
+        "mae": metrics["mae"],
+        "n_predictions": metrics["n_predictions"],
+    })
+
+    return rows
+
+
 def main() -> None:
     config = load_config()
     ubcf_cfg = config["model"]["ubcf"]
@@ -102,40 +169,7 @@ def main() -> None:
 
     results = []
     for name, model_class, kwargs in model_configs:
-        for max_ratings in TRUNCATION_LEVELS:
-            print(f"[{name}] Testing max_ratings={max_ratings}...", flush=True)
-            start = time.time()
-            metrics = evaluate_at_truncation(model_class, kwargs, train, test, max_ratings, SEED)
-            elapsed = time.time() - start
-            print(
-                f"  done in {elapsed:.1f}s  "
-                f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
-                flush=True,
-            )
-            results.append({
-                "model": name,
-                "max_ratings": max_ratings,
-                "rmse": metrics["rmse"],
-                "mae": metrics["mae"],
-                "n_predictions": metrics["n_predictions"],
-            })
-
-        print(f"[{name}] Testing max_ratings=full (no truncation)...", flush=True)
-        start = time.time()
-        metrics = evaluate_at_truncation(model_class, kwargs, train, test, None, SEED)
-        elapsed = time.time() - start
-        print(
-            f"  done in {elapsed:.1f}s  "
-            f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
-            flush=True,
-        )
-        results.append({
-            "model": name,
-            "max_ratings": "full",
-            "rmse": metrics["rmse"],
-            "mae": metrics["mae"],
-            "n_predictions": metrics["n_predictions"],
-        })
+        results.extend(run_truncation_sweep(name, model_class, kwargs, train, test))
 
     results_df = pd.DataFrame(results)[["model", "max_ratings", "rmse", "mae", "n_predictions"]]
     os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
@@ -144,6 +178,19 @@ def main() -> None:
 
     print("===== Cold-start simulation results =====")
     print(results_df.to_string(index=False))
+
+    # --- controlled comparison: does a higher min_support fix IBCF's non-monotonicity? ---
+    alt_name = f"IBCF (min_support={IBCF_ALT_MIN_SUPPORT})"
+    alt_kwargs = {"k": IBCF_ALT_K, "min_support": IBCF_ALT_MIN_SUPPORT}
+    alt_results = run_truncation_sweep(alt_name, ItemBasedCF, alt_kwargs, train, test)
+
+    alt_results_df = pd.DataFrame(alt_results)[["model", "max_ratings", "rmse", "mae", "n_predictions"]]
+    os.makedirs(os.path.dirname(IBCF_ALT_RESULTS_PATH), exist_ok=True)
+    alt_results_df.to_csv(IBCF_ALT_RESULTS_PATH, index=False)
+    print(f"\nSaved results to {IBCF_ALT_RESULTS_PATH}\n")
+
+    print(f"===== {alt_name} cold-start results =====")
+    print(alt_results_df.to_string(index=False))
 
 
 if __name__ == "__main__":
