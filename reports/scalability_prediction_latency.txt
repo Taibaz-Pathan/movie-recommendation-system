@@ -1,0 +1,4 @@
+Prediction latency (full training data, 20 repeated predict() calls, same user/movie pair)
+
+UBCF: avg 0.5933 ms/call (user_id=1, movie_id=1, n=20)
+IBCF: avg 0.0644 ms/call (user_id=1, movie_id=1, n=20)
