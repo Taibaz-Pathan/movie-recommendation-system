@@ -94,7 +94,9 @@ def main() -> None:
     print(best_rmse.to_string(index=False))
 
     print("\n===== Best config per model by highest Precision@10 =====")
-    best_precision = results_df.loc[results_df.groupby("model")["precision_10"].idxmax()]
+    best_precision = results_df.loc[
+        results_df.groupby("model")["precision_10"].idxmax()
+    ]
     print(best_precision.to_string(index=False))
 
 

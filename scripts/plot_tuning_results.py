@@ -13,13 +13,17 @@ RESULTS_PATH = os.path.join("reports", "hyperparameter_tuning_results.csv")
 FIGURES_DIR = os.path.join("reports", "figures")
 
 
-def plot_metric_vs_k(df: pd.DataFrame, model: str, metric: str, ylabel: str, out_path: str) -> None:
+def plot_metric_vs_k(
+    df: pd.DataFrame, model: str, metric: str, ylabel: str, out_path: str
+) -> None:
     subset = df[df["model"] == model]
 
     fig, ax = plt.subplots(figsize=(7, 5))
     for min_support, group in subset.groupby("min_support"):
         group = group.sort_values("k")
-        ax.plot(group["k"], group[metric], marker="o", label=f"min_support={min_support}")
+        ax.plot(
+            group["k"], group[metric], marker="o", label=f"min_support={min_support}"
+        )
 
     ax.set_xlabel("k (number of neighbours)")
     ax.set_ylabel(ylabel)
@@ -38,19 +42,31 @@ def main() -> None:
     os.makedirs(FIGURES_DIR, exist_ok=True)
 
     plot_metric_vs_k(
-        df, "UBCF", "rmse", "RMSE",
+        df,
+        "UBCF",
+        "rmse",
+        "RMSE",
         os.path.join(FIGURES_DIR, "ubcf_rmse_vs_k.png"),
     )
     plot_metric_vs_k(
-        df, "UBCF", "precision_10", "Precision@10",
+        df,
+        "UBCF",
+        "precision_10",
+        "Precision@10",
         os.path.join(FIGURES_DIR, "ubcf_precision_vs_k.png"),
     )
     plot_metric_vs_k(
-        df, "IBCF", "rmse", "RMSE",
+        df,
+        "IBCF",
+        "rmse",
+        "RMSE",
         os.path.join(FIGURES_DIR, "ibcf_rmse_vs_k.png"),
     )
     plot_metric_vs_k(
-        df, "IBCF", "precision_10", "Precision@10",
+        df,
+        "IBCF",
+        "precision_10",
+        "Precision@10",
         os.path.join(FIGURES_DIR, "ibcf_precision_vs_k.png"),
     )
 

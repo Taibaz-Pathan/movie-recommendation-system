@@ -37,16 +37,24 @@ def pick_sample_users(train: pd.DataFrame, n: int, seed: int) -> list:
     return sorted(rng.choice(eligible, size=n, replace=False).tolist())
 
 
-def top_rated_movies(train: pd.DataFrame, user_id: int, movies: pd.DataFrame, n: int) -> pd.DataFrame:
-    user_ratings = train[train["userId"] == user_id].sort_values(
-        ["rating", "movieId"], ascending=[False, True]
-    ).head(n)
-    return user_ratings.merge(movies, on="movieId")[["movieId", "title", "genres", "rating"]]
+def top_rated_movies(
+    train: pd.DataFrame, user_id: int, movies: pd.DataFrame, n: int
+) -> pd.DataFrame:
+    user_ratings = (
+        train[train["userId"] == user_id]
+        .sort_values(["rating", "movieId"], ascending=[False, True])
+        .head(n)
+    )
+    return user_ratings.merge(movies, on="movieId")[
+        ["movieId", "title", "genres", "rating"]
+    ]
 
 
 def recommendations_table(recs: list, movies: pd.DataFrame) -> pd.DataFrame:
     df = pd.DataFrame(recs, columns=["movieId", "predicted_score"])
-    return df.merge(movies, on="movieId")[["movieId", "title", "genres", "predicted_score"]]
+    return df.merge(movies, on="movieId")[
+        ["movieId", "title", "genres", "predicted_score"]
+    ]
 
 
 def format_table(df: pd.DataFrame, score_col: str = None) -> str:
@@ -61,7 +69,9 @@ def format_table(df: pd.DataFrame, score_col: str = None) -> str:
     lines.append(sep)
     for _, row in df.iterrows():
         value_col = row["predicted_score"] if score_col else row["rating"]
-        lines.append(f"| {row['movieId']} | {row['title']} | {row['genres']} | {value_col:.2f} |")
+        lines.append(
+            f"| {row['movieId']} | {row['title']} | {row['genres']} | {value_col:.2f} |"
+        )
     return "\n".join(lines)
 
 
@@ -76,7 +86,9 @@ def main() -> None:
 
     print(f"Fitting UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})...")
     ubcf = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     )
     ubcf.fit(train_matrix)
 
@@ -99,11 +111,17 @@ def main() -> None:
     for user_id in sample_users:
         print(f"\n===== User {user_id} =====")
         top_rated = top_rated_movies(train, user_id, movies, N_TOP_RATED)
-        ubcf_recs = recommendations_table(ubcf.recommend(user_id, n=N_RECOMMENDATIONS), movies)
-        ibcf_recs = recommendations_table(ibcf.recommend(user_id, n=N_RECOMMENDATIONS), movies)
+        ubcf_recs = recommendations_table(
+            ubcf.recommend(user_id, n=N_RECOMMENDATIONS), movies
+        )
+        ibcf_recs = recommendations_table(
+            ibcf.recommend(user_id, n=N_RECOMMENDATIONS), movies
+        )
 
         overlap_ids = set(ubcf_recs["movieId"]) & set(ibcf_recs["movieId"])
-        overlap_titles = ubcf_recs[ubcf_recs["movieId"].isin(overlap_ids)]["title"].tolist()
+        overlap_titles = ubcf_recs[ubcf_recs["movieId"].isin(overlap_ids)][
+            "title"
+        ].tolist()
 
         print(f"Top {N_TOP_RATED} rated movies:")
         print(top_rated.to_string(index=False))
@@ -111,23 +129,29 @@ def main() -> None:
         print(ubcf_recs.to_string(index=False))
         print(f"\nIBCF top {N_RECOMMENDATIONS} recommendations:")
         print(ibcf_recs.to_string(index=False))
-        print(f"\nOverlap between UBCF and IBCF: {len(overlap_ids)} movie(s) -- {overlap_titles}")
+        print(
+            f"\nOverlap between UBCF and IBCF: {len(overlap_ids)} movie(s) -- {overlap_titles}"
+        )
 
         section = [f"## User {user_id}\n"]
-        section.append(f"### Taste profile: top {N_TOP_RATED} highest-rated movies in training\n")
+        section.append(
+            f"### Taste profile: top {N_TOP_RATED} highest-rated movies in training\n"
+        )
         section.append(format_table(top_rated))
         section.append(f"\n### UBCF top {N_RECOMMENDATIONS} recommendations\n")
         section.append(format_table(ubcf_recs, score_col="Predicted score"))
         section.append(f"\n### IBCF top {N_RECOMMENDATIONS} recommendations\n")
         section.append(format_table(ibcf_recs, score_col="Predicted score"))
-        section.append(f"\n### Overlap\n")
+        section.append("\n### Overlap\n")
         if overlap_ids:
             section.append(
                 f"{len(overlap_ids)} movie(s) appear in both UBCF's and IBCF's top-10: "
                 + ", ".join(overlap_titles)
             )
         else:
-            section.append("No overlap -- UBCF and IBCF recommended entirely disjoint movie sets.")
+            section.append(
+                "No overlap -- UBCF and IBCF recommended entirely disjoint movie sets."
+            )
         section.append("")
 
         sections.append("\n".join(section))

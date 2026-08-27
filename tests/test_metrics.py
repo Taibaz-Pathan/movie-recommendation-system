@@ -21,9 +21,9 @@ def test_rmse_known_value():
     # Errors: [1, 0, 0] -> MSE = 1/3 -> RMSE = sqrt(1/3)
     expected = math.sqrt(1.0 / 3.0)
     result = rmse(y_true, y_pred)
-    assert math.isclose(result, expected, rel_tol=1e-9), (
-        f"Expected RMSE {expected:.6f}, got {result:.6f}"
-    )
+    assert math.isclose(
+        result, expected, rel_tol=1e-9
+    ), f"Expected RMSE {expected:.6f}, got {result:.6f}"
 
 
 def test_mae_perfect_prediction():

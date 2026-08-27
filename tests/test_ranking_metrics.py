@@ -7,6 +7,7 @@ from src.evaluation.metrics import f1_at_k, precision_at_k, recall_at_k
 
 # --- precision_at_k ---
 
+
 def test_precision_perfect_match():
     # top-3 == relevant exactly -> 3/3 hits = 1.0
     recommended = [1, 2, 3]
@@ -42,6 +43,7 @@ def test_precision_empty_recommended():
 
 # --- recall_at_k ---
 
+
 def test_recall_perfect_match():
     # all 3 relevant items appear in top-3 -> 3/3 = 1.0
     recommended = [1, 2, 3]
@@ -68,6 +70,7 @@ def test_recall_cutoff_respected():
 
 
 # --- f1_at_k ---
+
 
 def test_f1_balanced_precision_recall():
     # precision == recall == 0.5 -> harmonic mean = 0.5

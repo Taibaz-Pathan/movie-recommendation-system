@@ -119,7 +119,9 @@ def main() -> None:
 
     print(f"Fitting UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})...")
     ubcf = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     )
     ubcf.fit(train_matrix)
 
@@ -142,14 +144,18 @@ def main() -> None:
         )
 
     print(f"\nRunning paired bootstrap ({N_BOOTSTRAP} resamples, seed={SEED})...")
-    result = bootstrap_rmse_comparison(errors_ubcf, errors_ibcf, n_bootstrap=N_BOOTSTRAP, seed=SEED)
+    result = bootstrap_rmse_comparison(
+        errors_ubcf, errors_ibcf, n_bootstrap=N_BOOTSTRAP, seed=SEED
+    )
 
     rmse_ubcf = np.sqrt(errors_ubcf.mean())
     rmse_ibcf = np.sqrt(errors_ibcf.mean())
 
     print("\n===== Bootstrap RMSE comparison: UBCF (a) vs IBCF (b) =====")
     print(f"Point-estimate RMSE -- UBCF: {rmse_ubcf:.4f}  IBCF: {rmse_ibcf:.4f}")
-    print(f"UBCF has lower RMSE in {result['a_wins_pct']:.1f}% of {N_BOOTSTRAP} resamples")
+    print(
+        f"UBCF has lower RMSE in {result['a_wins_pct']:.1f}% of {N_BOOTSTRAP} resamples"
+    )
     print(f"Mean RMSE difference (IBCF - UBCF): {result['mean_rmse_diff']:.4f}")
     print(f"95% CI: [{result['ci_lower']:.4f}, {result['ci_upper']:.4f}]")
 

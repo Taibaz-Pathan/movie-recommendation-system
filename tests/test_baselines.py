@@ -8,17 +8,21 @@ from src.models.baselines import GlobalMeanBaseline, ItemMeanBaseline, UserMeanB
 
 # --- shared fixture ---
 
+
 @pytest.fixture()
 def sample_ratings():
     """Small synthetic ratings DataFrame: 3 users, 4 movies."""
-    return pd.DataFrame({
-        "userId":  [1, 1, 2, 2, 2, 2, 3, 3, 3],
-        "movieId": [1, 2, 1, 2, 3, 4, 1, 3, 4],
-        "rating":  [5.0, 4.0, 4.0, 5.0, 2.0, 1.0, 1.0, 5.0, 4.0],
-    })
+    return pd.DataFrame(
+        {
+            "userId": [1, 1, 2, 2, 2, 2, 3, 3, 3],
+            "movieId": [1, 2, 1, 2, 3, 4, 1, 3, 4],
+            "rating": [5.0, 4.0, 4.0, 5.0, 2.0, 1.0, 1.0, 5.0, 4.0],
+        }
+    )
 
 
 # --- GlobalMeanBaseline ---
+
 
 def test_global_fit_returns_self(sample_ratings):
     model = GlobalMeanBaseline()
@@ -60,6 +64,7 @@ def test_global_evaluate_returns_rmse_and_mae(sample_ratings):
 
 
 # --- UserMeanBaseline ---
+
 
 def test_user_mean_fit_returns_self(sample_ratings):
     model = UserMeanBaseline()
@@ -103,6 +108,7 @@ def test_user_mean_evaluate_returns_rmse_and_mae(sample_ratings):
 
 
 # --- ItemMeanBaseline ---
+
 
 def test_item_mean_fit_returns_self(sample_ratings):
     model = ItemMeanBaseline()

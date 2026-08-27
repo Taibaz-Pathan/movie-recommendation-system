@@ -44,23 +44,39 @@ def main() -> None:
 
     results = []
 
-    results.append(evaluate_model("GlobalMeanBaseline", GlobalMeanBaseline().fit(train), test))
-    results.append(evaluate_model("UserMeanBaseline", UserMeanBaseline().fit(train), test))
-    results.append(evaluate_model("ItemMeanBaseline", ItemMeanBaseline().fit(train), test))
+    results.append(
+        evaluate_model("GlobalMeanBaseline", GlobalMeanBaseline().fit(train), test)
+    )
+    results.append(
+        evaluate_model("UserMeanBaseline", UserMeanBaseline().fit(train), test)
+    )
+    results.append(
+        evaluate_model("ItemMeanBaseline", ItemMeanBaseline().fit(train), test)
+    )
 
     ubcf = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     )
     ubcf.fit(train_matrix)
-    results.append(evaluate_model(
-        f"UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})", ubcf, test
-    ))
+    results.append(
+        evaluate_model(
+            f"UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})",
+            ubcf,
+            test,
+        )
+    )
 
     ibcf = ItemBasedCF(k=ibcf_cfg["k"], min_support=ibcf_cfg["min_support"])
     ibcf.fit(train)
-    results.append(evaluate_model(
-        f"IBCF (k={ibcf_cfg['k']}, min_support={ibcf_cfg['min_support']})", ibcf, test
-    ))
+    results.append(
+        evaluate_model(
+            f"IBCF (k={ibcf_cfg['k']}, min_support={ibcf_cfg['min_support']})",
+            ibcf,
+            test,
+        )
+    )
 
     results_df = pd.DataFrame(results)[
         ["model", "rmse", "mae", "precision_10", "recall_10"]

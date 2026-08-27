@@ -1,7 +1,6 @@
 """Data loading utilities for the MovieLens dataset."""
 
 import os
-from pathlib import Path
 
 import pandas as pd
 
@@ -96,7 +95,10 @@ def dataset_summary(ratings: pd.DataFrame, movies: pd.DataFrame) -> None:
     print(f"Unique movies    : {n_movies}")
     print(f"Rating range     : {ratings['rating'].min()} – {ratings['rating'].max()}")
     print(f"Rating mean      : {ratings['rating'].mean():.4f}")
-    print(f"Date range       : {ratings['timestamp'].min().date()} to {ratings['timestamp'].max().date()}")
+    print(
+        f"Date range       : {ratings['timestamp'].min().date()} "
+        f"to {ratings['timestamp'].max().date()}"
+    )
     print(f"Matrix sparsity  : {sparsity:.2f}%")
     print("=" * 50)
 

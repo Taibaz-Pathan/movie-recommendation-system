@@ -17,7 +17,8 @@ N_ROWS = 20
 
 
 def count_valid_neighbours(model: ItemBasedCF, user_id: int, movie_id: int) -> int:
-    """Replicate predict()'s neighbour-selection logic to count nonzero-similarity neighbours used."""
+    """Replicate predict()'s neighbour-selection logic to count nonzero-similarity
+    neighbours used."""
     u_idx = model._get_user_index(user_id)
     m_idx = model._get_movie_index(movie_id)
 
@@ -44,7 +45,9 @@ def main() -> None:
 
     rows = test.head(N_ROWS)
 
-    print(f"{'userId':>8} {'movieId':>8} {'actual':>8} {'predicted':>10} {'n_valid':>8}")
+    print(
+        f"{'userId':>8} {'movieId':>8} {'actual':>8} {'predicted':>10} {'n_valid':>8}"
+    )
     print("-" * 46)
 
     n_clipped_low = 0
@@ -60,7 +63,9 @@ def main() -> None:
             n_valid = count_valid_neighbours(model, user_id, movie_id)
             predicted = model.predict(user_id, movie_id)
         except ValueError as exc:
-            print(f"{user_id:>8} {movie_id:>8} {actual:>8.2f} {'N/A':>10} {'N/A':>8}  ({exc})")
+            print(
+                f"{user_id:>8} {movie_id:>8} {actual:>8.2f} {'N/A':>10} {'N/A':>8}  ({exc})"
+            )
             continue
 
         n_predicted += 1
@@ -69,7 +74,9 @@ def main() -> None:
         elif predicted == 5.0:
             n_clipped_high += 1
 
-        print(f"{user_id:>8} {movie_id:>8} {actual:>8.2f} {predicted:>10.4f} {n_valid:>8}")
+        print(
+            f"{user_id:>8} {movie_id:>8} {actual:>8.2f} {predicted:>10.4f} {n_valid:>8}"
+        )
 
     print()
     print(f"Predictions clipped to exactly 0.5: {n_clipped_low} / {n_predicted}")
@@ -102,7 +109,9 @@ def main() -> None:
 
     print()
     print(f"Item-item pairs total       : {total_pairs}")
-    print(f"Pairs surviving min_support={model.min_support}: {surviving_pairs} ({pct_surviving:.2f}%)")
+    print(
+        f"Pairs surviving min_support={model.min_support}: {surviving_pairs} ({pct_surviving:.2f}%)"
+    )
 
 
 if __name__ == "__main__":

@@ -21,7 +21,9 @@ SAMPLE_SIZE = 30
 SEED = 42
 
 
-def plot_heatmap(matrix: np.ndarray, title: str, axis_label: str, out_path: str) -> None:
+def plot_heatmap(
+    matrix: np.ndarray, title: str, axis_label: str, out_path: str
+) -> None:
     fig, ax = plt.subplots(figsize=(8, 7))
     im = ax.imshow(matrix, cmap="coolwarm", vmin=-1, vmax=1)
 
@@ -50,13 +52,17 @@ def main() -> None:
     # --- UBCF: user-user similarity ---
     print(f"Fitting UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})...")
     ubcf = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     )
     ubcf.fit(train_matrix)
 
     rng = np.random.default_rng(SEED)
     sampled_users = rng.choice(ubcf._users, size=SAMPLE_SIZE, replace=False)
-    ubcf_submatrix = ubcf._sim_matrix.loc[sampled_users, sampled_users].fillna(0.0).to_numpy()
+    ubcf_submatrix = (
+        ubcf._sim_matrix.loc[sampled_users, sampled_users].fillna(0.0).to_numpy()
+    )
 
     plot_heatmap(
         ubcf_submatrix,

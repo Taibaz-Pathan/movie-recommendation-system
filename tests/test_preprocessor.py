@@ -1,7 +1,6 @@
 """Unit tests for src/data/preprocessor.py."""
 
 import pandas as pd
-import numpy as np
 import pytest
 
 from src.data.preprocessor import (
@@ -14,18 +13,22 @@ from src.data.preprocessor import (
 
 # --- shared fixture ---
 
+
 @pytest.fixture()
 def sample_ratings():
     """Small synthetic ratings DataFrame for testing."""
-    return pd.DataFrame({
-        "userId":  [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4],
-        "movieId": [1, 2, 3, 1, 2, 4, 1, 3, 4, 2, 3, 4],
-        "rating":  [4.0, 3.0, 5.0, 2.0, 4.0, 3.5, 5.0, 4.0, 2.5, 3.0, 4.5, 1.0],
-        "timestamp": pd.to_datetime(["2020-01-01"] * 12),
-    })
+    return pd.DataFrame(
+        {
+            "userId": [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4],
+            "movieId": [1, 2, 3, 1, 2, 4, 1, 3, 4, 2, 3, 4],
+            "rating": [4.0, 3.0, 5.0, 2.0, 4.0, 3.5, 5.0, 4.0, 2.5, 3.0, 4.5, 1.0],
+            "timestamp": pd.to_datetime(["2020-01-01"] * 12),
+        }
+    )
 
 
 # --- filter_ratings ---
+
 
 def test_filter_returns_dataframe(sample_ratings):
     result = filter_ratings(sample_ratings, min_user_ratings=1, min_movie_ratings=1)
@@ -56,9 +59,10 @@ def test_filter_resets_index(sample_ratings):
 
 # --- build_user_item_matrix ---
 
+
 def test_matrix_shape(sample_ratings):
     matrix = build_user_item_matrix(sample_ratings)
-    n_users  = sample_ratings["userId"].nunique()
+    n_users = sample_ratings["userId"].nunique()
     n_movies = sample_ratings["movieId"].nunique()
     assert matrix.shape == (n_users, n_movies)
 
@@ -87,6 +91,7 @@ def test_matrix_unrated_is_nan(sample_ratings):
 
 # --- train_test_split_per_user ---
 
+
 def test_split_returns_two_dataframes(sample_ratings):
     train, test = train_test_split_per_user(sample_ratings, test_size=0.2)
     assert isinstance(train, pd.DataFrame)
@@ -96,7 +101,7 @@ def test_split_returns_two_dataframes(sample_ratings):
 def test_split_no_overlap(sample_ratings):
     train, test = train_test_split_per_user(sample_ratings, test_size=0.2)
     train_pairs = set(zip(train["userId"], train["movieId"]))
-    test_pairs  = set(zip(test["userId"],  test["movieId"]))
+    test_pairs = set(zip(test["userId"], test["movieId"]))
     assert train_pairs.isdisjoint(test_pairs)
 
 
@@ -128,6 +133,7 @@ def test_split_raises_on_invalid_test_size(sample_ratings):
 
 
 # --- save_splits ---
+
 
 def test_save_creates_files(sample_ratings, tmp_path):
     train, test = train_test_split_per_user(sample_ratings, test_size=0.2)

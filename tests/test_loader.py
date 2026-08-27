@@ -1,9 +1,5 @@
 """Unit tests for src/data/loader.py."""
 
-import io
-import os
-from unittest.mock import patch
-
 import pandas as pd
 import pytest
 
@@ -52,7 +48,9 @@ def test_ratings_columns_exist(tmp_data_dir):
     """Loaded ratings DataFrame must contain the expected columns."""
     df = load_ratings(tmp_data_dir)
     for col in ("userId", "movieId", "rating", "timestamp"):
-        assert col in df.columns, f"Expected column '{col}' not found in ratings DataFrame."
+        assert (
+            col in df.columns
+        ), f"Expected column '{col}' not found in ratings DataFrame."
 
 
 def test_rating_range(tmp_data_dir):
@@ -65,9 +63,9 @@ def test_rating_range(tmp_data_dir):
 def test_timestamp_converted_to_datetime(tmp_data_dir):
     """The timestamp column should be converted from unix int to datetime."""
     df = load_ratings(tmp_data_dir)
-    assert pd.api.types.is_datetime64_any_dtype(df["timestamp"]), (
-        "Expected 'timestamp' column to be datetime dtype after loading."
-    )
+    assert pd.api.types.is_datetime64_any_dtype(
+        df["timestamp"]
+    ), "Expected 'timestamp' column to be datetime dtype after loading."
 
 
 def test_load_ratings_raises_on_missing_file(tmp_path):

@@ -70,7 +70,9 @@ def main() -> None:
     train = pd.read_csv(TRAIN_PATH)
 
     ubcf_kwargs = {
-        "k": ubcf_cfg["k"], "similarity": ubcf_cfg["similarity"], "min_support": ubcf_cfg["min_support"]
+        "k": ubcf_cfg["k"],
+        "similarity": ubcf_cfg["similarity"],
+        "min_support": ubcf_cfg["min_support"],
     }
     ibcf_kwargs = {"k": ibcf_cfg["k"], "min_support": ibcf_cfg["min_support"]}
 
@@ -81,18 +83,38 @@ def main() -> None:
         sampled = sample_train(train, fraction, SEED)
         n_ratings = len(sampled)
 
-        print(f"[UBCF] Fitting at fraction={fraction} (n_ratings={n_ratings})...", flush=True)
+        print(
+            f"[UBCF] Fitting at fraction={fraction} (n_ratings={n_ratings})...",
+            flush=True,
+        )
         matrix = build_user_item_matrix(sampled)
         model, elapsed = time_fit(UserBasedCF, ubcf_kwargs, matrix)
         print(f"  done in {elapsed:.2f}s", flush=True)
-        results.append({"model": "UBCF", "fraction": fraction, "n_ratings": n_ratings, "fit_time_s": elapsed})
+        results.append(
+            {
+                "model": "UBCF",
+                "fraction": fraction,
+                "n_ratings": n_ratings,
+                "fit_time_s": elapsed,
+            }
+        )
         if fraction == 1.0:
             full_models["UBCF"] = model
 
-        print(f"[IBCF] Fitting at fraction={fraction} (n_ratings={n_ratings})...", flush=True)
+        print(
+            f"[IBCF] Fitting at fraction={fraction} (n_ratings={n_ratings})...",
+            flush=True,
+        )
         model, elapsed = time_fit(ItemBasedCF, ibcf_kwargs, sampled)
         print(f"  done in {elapsed:.2f}s", flush=True)
-        results.append({"model": "IBCF", "fraction": fraction, "n_ratings": n_ratings, "fit_time_s": elapsed})
+        results.append(
+            {
+                "model": "IBCF",
+                "fraction": fraction,
+                "n_ratings": n_ratings,
+                "fit_time_s": elapsed,
+            }
+        )
         if fraction == 1.0:
             full_models["IBCF"] = model
 
@@ -103,22 +125,29 @@ def main() -> None:
     print("===== Scalability fit-time results =====")
     print(results_df.to_string(index=False))
 
-    print(f"\nMeasuring single predict() latency ({N_LATENCY_CALLS} calls, full data)...")
+    print(
+        f"\nMeasuring single predict() latency ({N_LATENCY_CALLS} calls, full data)..."
+    )
 
     ubcf_model = full_models["UBCF"]
     ubcf_user_id = int(ubcf_model._ratings_matrix.index[0])
     ubcf_movie_id = int(ubcf_model._ratings_matrix.columns[0])
-    ubcf_avg_ms = measure_predict_latency(ubcf_model, ubcf_user_id, ubcf_movie_id, N_LATENCY_CALLS)
+    ubcf_avg_ms = measure_predict_latency(
+        ubcf_model, ubcf_user_id, ubcf_movie_id, N_LATENCY_CALLS
+    )
     print(f"UBCF avg latency: {ubcf_avg_ms:.4f} ms")
 
     ibcf_model = full_models["IBCF"]
     ibcf_user_id = int(ibcf_model._users[0])
     ibcf_movie_id = int(ibcf_model._movies[0])
-    ibcf_avg_ms = measure_predict_latency(ibcf_model, ibcf_user_id, ibcf_movie_id, N_LATENCY_CALLS)
+    ibcf_avg_ms = measure_predict_latency(
+        ibcf_model, ibcf_user_id, ibcf_movie_id, N_LATENCY_CALLS
+    )
     print(f"IBCF avg latency: {ibcf_avg_ms:.4f} ms")
 
     lines = [
-        "Prediction latency (full training data, 20 repeated predict() calls, same user/movie pair)\n",
+        "Prediction latency (full training data, 20 repeated predict() calls, "
+        "same user/movie pair)\n",
         "\n",
         f"UBCF: avg {ubcf_avg_ms:.4f} ms/call "
         f"(user_id={ubcf_user_id}, movie_id={ubcf_movie_id}, n={N_LATENCY_CALLS})\n",

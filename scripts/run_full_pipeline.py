@@ -1,4 +1,5 @@
-"""End-to-end pipeline: raw data -> preprocessing -> train all 6 models -> evaluate -> save results."""
+"""End-to-end pipeline: raw data -> preprocessing -> train all 6 models -> evaluate
+-> save results."""
 
 import os
 import sys
@@ -10,7 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 
 from src.data.loader import load_all
-from src.data.preprocessor import build_user_item_matrix, filter_ratings, train_test_split_per_user
+from src.data.preprocessor import (
+    build_user_item_matrix,
+    filter_ratings,
+    train_test_split_per_user,
+)
 from src.evaluation.metrics import evaluate_ranking
 from src.models.baselines import GlobalMeanBaseline, ItemMeanBaseline, UserMeanBaseline
 from src.models.ibcf import ItemBasedCF
@@ -57,7 +62,9 @@ def main() -> None:
         min_movie_ratings=filter_cfg.get("min_movie_ratings", 20),
     )
     train, test = train_test_split_per_user(
-        filtered, test_size=split_cfg["test_size"], random_state=split_cfg["random_state"]
+        filtered,
+        test_size=split_cfg["test_size"],
+        random_state=split_cfg["random_state"],
     )
     train_matrix = build_user_item_matrix(train)
     print(f"  Stage 2 took {time.perf_counter() - start:.2f}s\n", flush=True)
@@ -74,11 +81,15 @@ def main() -> None:
 
     ubcf_name = f"UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})"
     models[ubcf_name] = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     ).fit(train_matrix)
 
     ibcf_name = f"IBCF (k={ibcf_cfg['k']}, min_support={ibcf_cfg['min_support']})"
-    models[ibcf_name] = ItemBasedCF(k=ibcf_cfg["k"], min_support=ibcf_cfg["min_support"]).fit(train)
+    models[ibcf_name] = ItemBasedCF(
+        k=ibcf_cfg["k"], min_support=ibcf_cfg["min_support"]
+    ).fit(train)
 
     models["SVD (n_factors=50, n_epochs=20)"] = SVDModel(
         n_factors=50, n_epochs=20, random_state=42

@@ -12,7 +12,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np
 import pandas as pd
 
 from src.data.preprocessor import build_user_item_matrix
@@ -79,8 +78,12 @@ def main() -> None:
     user_row = model._ratings_matrix.loc[SAMPLE_USER_ID]
     unrated = user_row[user_row.isna()].index.tolist()
 
-    print(f"===== User {SAMPLE_USER_ID}: user_mean = {model._user_means[SAMPLE_USER_ID]:.4f} =====\n")
-    print(f"{'movieId':>8}{'n_neigh':>9}{'raw_pred':>11}{'numerator':>12}{'denominator':>13}")
+    print(
+        f"===== User {SAMPLE_USER_ID}: user_mean = {model._user_means[SAMPLE_USER_ID]:.4f} =====\n"
+    )
+    print(
+        f"{'movieId':>8}{'n_neigh':>9}{'raw_pred':>11}{'numerator':>12}{'denominator':>13}"
+    )
     print("-" * 53)
 
     saturated_rows = []
@@ -96,9 +99,13 @@ def main() -> None:
                 f"{result['numerator']:>12.4f}{result['denominator']:>13.4f}"
             )
 
-    n_checked = sum(1 for m in unrated if raw_predict(model, SAMPLE_USER_ID, m) is not None)
-    print(f"\n{len(saturated_rows)} / {n_checked} predictions for user {SAMPLE_USER_ID} "
-          f"fall outside [0.5, 5.0] before clipping.")
+    n_checked = sum(
+        1 for m in unrated if raw_predict(model, SAMPLE_USER_ID, m) is not None
+    )
+    print(
+        f"\n{len(saturated_rows)} / {n_checked} predictions for user {SAMPLE_USER_ID} "
+        f"fall outside [0.5, 5.0] before clipping."
+    )
 
     # --- Step 2: full arithmetic breakdown for 3 saturated examples ---
     print("\n\n===== Full arithmetic for 3 saturated examples =====")
@@ -106,20 +113,26 @@ def main() -> None:
         print(f"\n--- user {SAMPLE_USER_ID}, movie {movie_id} ---")
         print(f"user_mean            : {result['user_mean']:.4f}")
         print(f"n_neighbours used    : {result['n_neighbours']}")
-        detail = pd.DataFrame({
-            "sim": result["sim_scores"],
-            "neighbour_rating": result["neighbour_ratings"],
-            "neighbour_mean": result["neighbour_means"],
-            "deviation": result["deviations"],
-            "sim_x_deviation": result["sim_scores"] * result["deviations"],
-        })
+        detail = pd.DataFrame(
+            {
+                "sim": result["sim_scores"],
+                "neighbour_rating": result["neighbour_ratings"],
+                "neighbour_mean": result["neighbour_means"],
+                "deviation": result["deviations"],
+                "sim_x_deviation": result["sim_scores"] * result["deviations"],
+            }
+        )
         print(detail.to_string())
         print(f"numerator (sum sim*deviation) : {result['numerator']:.4f}")
         print(f"denominator (sum |sim|)       : {result['denominator']:.4f}")
-        print(f"numerator / denominator       : {result['numerator'] / result['denominator']:.4f}")
-        print(f"raw_prediction = user_mean + (numerator/denominator) "
-              f"= {result['user_mean']:.4f} + {result['numerator'] / result['denominator']:.4f} "
-              f"= {result['raw_prediction']:.4f}")
+        print(
+            f"numerator / denominator       : {result['numerator'] / result['denominator']:.4f}"
+        )
+        print(
+            f"raw_prediction = user_mean + (numerator/denominator) "
+            f"= {result['user_mean']:.4f} + {result['numerator'] / result['denominator']:.4f} "
+            f"= {result['raw_prediction']:.4f}"
+        )
 
     # --- Step 3: full test-set sweep ---
     print("\n\n===== Full test-set sweep: how common is clip-saturation? =====")
@@ -127,8 +140,8 @@ def main() -> None:
     n_saturated_high = 0
     n_saturated_low = 0
     n_few_neighbours_saturated = 0  # saturated AND used <= 3 neighbours
-    sparse_user_saturated = 0       # saturated AND user has <= 20 ratings in train
-    sparse_movie_saturated = 0      # saturated AND movie has <= 20 ratings in train
+    sparse_user_saturated = 0  # saturated AND user has <= 20 ratings in train
+    sparse_movie_saturated = 0  # saturated AND movie has <= 20 ratings in train
 
     user_rating_counts = model._ratings_matrix.count(axis=1)
     movie_rating_counts = model._ratings_matrix.count(axis=0)
@@ -167,10 +180,18 @@ def main() -> None:
     print(f"Total genuine (non-fallback) predictions checked : {n_total}")
     print(f"Raw prediction > 5.0                              : {n_saturated_high}")
     print(f"Raw prediction < 0.5                               : {n_saturated_low}")
-    print(f"Total saturated                                    : {n_saturated_total} ({pct:.2f}%)")
-    print(f"  ...of which used <= 3 neighbours                 : {n_few_neighbours_saturated}")
-    print(f"  ...of which user has <= 20 ratings in train       : {sparse_user_saturated}")
-    print(f"  ...of which movie has <= 20 ratings in train      : {sparse_movie_saturated}")
+    print(
+        f"Total saturated                                    : {n_saturated_total} ({pct:.2f}%)"
+    )
+    print(
+        f"  ...of which used <= 3 neighbours                 : {n_few_neighbours_saturated}"
+    )
+    print(
+        f"  ...of which user has <= 20 ratings in train       : {sparse_user_saturated}"
+    )
+    print(
+        f"  ...of which movie has <= 20 ratings in train      : {sparse_movie_saturated}"
+    )
 
 
 if __name__ == "__main__":

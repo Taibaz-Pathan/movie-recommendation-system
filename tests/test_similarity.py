@@ -1,6 +1,5 @@
 """Unit tests for src/utils/similarity.py."""
 
-import math
 import numpy as np
 import pytest
 
@@ -15,6 +14,7 @@ from src.utils.similarity import (
 # ---------------------------------------------------------------------------
 # cosine_similarity — vector
 # ---------------------------------------------------------------------------
+
 
 def test_cosine_identical_vectors():
     """Cosine similarity of a vector with itself should be 1.0."""
@@ -40,7 +40,7 @@ def test_cosine_known_value():
 def test_cosine_ignores_nan_positions():
     """NaN positions should be excluded from the computation."""
     u = [4.0, np.nan, 3.0]
-    v = [4.0, 5.0,    3.0]
+    v = [4.0, 5.0, 3.0]
     # Only positions 0 and 2 are co-rated: u=[4,3], v=[4,3] → sim=1.0
     assert cosine_similarity(u, v) == pytest.approx(1.0)
 
@@ -65,6 +65,7 @@ def test_cosine_result_in_range():
 # ---------------------------------------------------------------------------
 # pearson_similarity — vector
 # ---------------------------------------------------------------------------
+
 
 def test_pearson_identical_vectors():
     """Pearson similarity of a vector with itself should be 1.0."""
@@ -105,7 +106,7 @@ def test_pearson_below_min_support():
 def test_pearson_ignores_nan_positions():
     """NaN positions should not affect the computation."""
     u = [5.0, np.nan, 3.0, 1.0]
-    v = [5.0, 4.0,    3.0, 1.0]
+    v = [5.0, 4.0, 3.0, 1.0]
     # Co-rated positions: 0, 2, 3 → u=[5,3,1], v=[5,3,1] → r=1.0
     assert pearson_similarity(u, v, min_support=2) == pytest.approx(1.0)
 
@@ -124,28 +125,24 @@ def test_pearson_result_in_range():
 # cosine_similarity_matrix
 # ---------------------------------------------------------------------------
 
+
 def test_cosine_matrix_shape():
     """Output should be (n, n) for an (n, m) input."""
-    matrix = np.array([[4.0, 3.0, np.nan],
-                       [np.nan, 2.0, 5.0],
-                       [3.0, np.nan, 4.0]])
+    matrix = np.array([[4.0, 3.0, np.nan], [np.nan, 2.0, 5.0], [3.0, np.nan, 4.0]])
     sim = cosine_similarity_matrix(matrix)
     assert sim.shape == (3, 3)
 
 
 def test_cosine_matrix_diagonal_is_one():
     """Diagonal entries should all be 1.0."""
-    matrix = np.array([[4.0, 3.0, 2.0],
-                       [2.0, 5.0, 1.0]])
+    matrix = np.array([[4.0, 3.0, 2.0], [2.0, 5.0, 1.0]])
     sim = cosine_similarity_matrix(matrix)
     np.testing.assert_array_almost_equal(np.diag(sim), [1.0, 1.0])
 
 
 def test_cosine_matrix_is_symmetric():
     """Similarity matrix must be symmetric."""
-    matrix = np.array([[4.0, 3.0, np.nan],
-                       [np.nan, 2.0, 5.0],
-                       [3.0, np.nan, 4.0]])
+    matrix = np.array([[4.0, 3.0, np.nan], [np.nan, 2.0, 5.0], [3.0, np.nan, 4.0]])
     sim = cosine_similarity_matrix(matrix)
     np.testing.assert_array_almost_equal(sim, sim.T)
 
@@ -163,28 +160,24 @@ def test_cosine_matrix_values_in_range():
 # pearson_similarity_matrix
 # ---------------------------------------------------------------------------
 
+
 def test_pearson_matrix_shape():
     """Output should be (n, n) for an (n, m) input."""
-    matrix = np.array([[4.0, 3.0, np.nan],
-                       [np.nan, 2.0, 5.0],
-                       [3.0, 4.0, 4.0]])
+    matrix = np.array([[4.0, 3.0, np.nan], [np.nan, 2.0, 5.0], [3.0, 4.0, 4.0]])
     sim = pearson_similarity_matrix(matrix, min_support=1)
     assert sim.shape == (3, 3)
 
 
 def test_pearson_matrix_diagonal_is_one():
     """Diagonal entries should all be 1.0."""
-    matrix = np.array([[4.0, 3.0, 2.0],
-                       [2.0, 5.0, 1.0]])
+    matrix = np.array([[4.0, 3.0, 2.0], [2.0, 5.0, 1.0]])
     sim = pearson_similarity_matrix(matrix, min_support=1)
     np.testing.assert_array_almost_equal(np.diag(sim), [1.0, 1.0])
 
 
 def test_pearson_matrix_is_symmetric():
     """Similarity matrix must be symmetric."""
-    matrix = np.array([[4.0, 3.0, np.nan],
-                       [np.nan, 2.0, 5.0],
-                       [3.0, 4.0, 4.0]])
+    matrix = np.array([[4.0, 3.0, np.nan], [np.nan, 2.0, 5.0], [3.0, 4.0, 4.0]])
     sim = pearson_similarity_matrix(matrix, min_support=1)
     np.testing.assert_array_almost_equal(sim, sim.T)
 
@@ -192,9 +185,7 @@ def test_pearson_matrix_is_symmetric():
 def test_pearson_matrix_min_support_zeroes_sparse_pairs():
     """Pairs with fewer co-rated items than min_support should be 0.0."""
     # Users 0 and 1 share only 1 co-rated item (position 0)
-    matrix = np.array([[4.0, np.nan, np.nan],
-                       [3.0, np.nan, np.nan],
-                       [4.0, 3.0,    5.0]])
+    matrix = np.array([[4.0, np.nan, np.nan], [3.0, np.nan, np.nan], [4.0, 3.0, 5.0]])
     sim = pearson_similarity_matrix(matrix, min_support=2)
     assert sim[0, 1] == 0.0
     assert sim[1, 0] == 0.0

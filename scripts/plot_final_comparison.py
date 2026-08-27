@@ -58,7 +58,9 @@ def main() -> None:
     # --- Precision@10: descending, higher is better ---
     precision_df = df.sort_values("precision_10", ascending=False)
     colors = [bar_color(m) for m in precision_df["model"]]
-    bars = ax_precision.bar(precision_df["model"], precision_df["precision_10"], color=colors)
+    bars = ax_precision.bar(
+        precision_df["model"], precision_df["precision_10"], color=colors
+    )
     add_value_labels(ax_precision, bars)
     ax_precision.set_title("Precision@10 by model (higher is better)")
     ax_precision.set_ylabel("Precision@10")

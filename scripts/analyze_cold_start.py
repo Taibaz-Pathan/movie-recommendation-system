@@ -18,7 +18,9 @@ from src.utils.helpers import load_config
 TRAIN_PATH = os.path.join("data", "processed", "train.csv")
 TEST_PATH = os.path.join("data", "processed", "test.csv")
 RESULTS_PATH = os.path.join("reports", "cold_start_results.csv")
-IBCF_ALT_RESULTS_PATH = os.path.join("reports", "cold_start_ibcf_min_support3_results.csv")
+IBCF_ALT_RESULTS_PATH = os.path.join(
+    "reports", "cold_start_ibcf_min_support3_results.csv"
+)
 
 TRUNCATION_LEVELS = [1, 3, 5, 10, 20]
 SEED = 42
@@ -32,7 +34,9 @@ IBCF_ALT_K = 20
 IBCF_ALT_MIN_SUPPORT = 3
 
 
-def truncate_user_ratings(train: pd.DataFrame, max_ratings: int, seed: int) -> pd.DataFrame:
+def truncate_user_ratings(
+    train: pd.DataFrame, max_ratings: int, seed: int
+) -> pd.DataFrame:
     """Randomly keep at most max_ratings rows per user, simulating a sparser history.
 
     Users with fewer than max_ratings rows keep all of them.
@@ -79,9 +83,15 @@ def evaluate_at_truncation(
     Returns:
         dict with keys 'rmse', 'mae', 'n_predictions' from model.evaluate().
     """
-    truncated = train if max_ratings is None else truncate_user_ratings(train, max_ratings, seed)
+    truncated = (
+        train
+        if max_ratings is None
+        else truncate_user_ratings(train, max_ratings, seed)
+    )
 
-    fit_data = build_user_item_matrix(truncated) if model_class is UserBasedCF else truncated
+    fit_data = (
+        build_user_item_matrix(truncated) if model_class is UserBasedCF else truncated
+    )
 
     model = model_class(**model_kwargs)
     model.fit(fit_data)
@@ -111,20 +121,24 @@ def run_truncation_sweep(
     for max_ratings in TRUNCATION_LEVELS:
         print(f"[{name}] Testing max_ratings={max_ratings}...", flush=True)
         start = time.time()
-        metrics = evaluate_at_truncation(model_class, model_kwargs, train, test, max_ratings, SEED)
+        metrics = evaluate_at_truncation(
+            model_class, model_kwargs, train, test, max_ratings, SEED
+        )
         elapsed = time.time() - start
         print(
             f"  done in {elapsed:.1f}s  "
             f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
             flush=True,
         )
-        rows.append({
-            "model": name,
-            "max_ratings": max_ratings,
-            "rmse": metrics["rmse"],
-            "mae": metrics["mae"],
-            "n_predictions": metrics["n_predictions"],
-        })
+        rows.append(
+            {
+                "model": name,
+                "max_ratings": max_ratings,
+                "rmse": metrics["rmse"],
+                "mae": metrics["mae"],
+                "n_predictions": metrics["n_predictions"],
+            }
+        )
 
     print(f"[{name}] Testing max_ratings=full (no truncation)...", flush=True)
     start = time.time()
@@ -135,13 +149,15 @@ def run_truncation_sweep(
         f"(RMSE={metrics['rmse']:.4f}, n_predictions={metrics['n_predictions']})",
         flush=True,
     )
-    rows.append({
-        "model": name,
-        "max_ratings": "full",
-        "rmse": metrics["rmse"],
-        "mae": metrics["mae"],
-        "n_predictions": metrics["n_predictions"],
-    })
+    rows.append(
+        {
+            "model": name,
+            "max_ratings": "full",
+            "rmse": metrics["rmse"],
+            "mae": metrics["mae"],
+            "n_predictions": metrics["n_predictions"],
+        }
+    )
 
     return rows
 
@@ -164,14 +180,20 @@ def main() -> None:
                 "min_support": ubcf_cfg["min_support"],
             },
         ),
-        ("IBCF", ItemBasedCF, {"k": ibcf_cfg["k"], "min_support": ibcf_cfg["min_support"]}),
+        (
+            "IBCF",
+            ItemBasedCF,
+            {"k": ibcf_cfg["k"], "min_support": ibcf_cfg["min_support"]},
+        ),
     ]
 
     results = []
     for name, model_class, kwargs in model_configs:
         results.extend(run_truncation_sweep(name, model_class, kwargs, train, test))
 
-    results_df = pd.DataFrame(results)[["model", "max_ratings", "rmse", "mae", "n_predictions"]]
+    results_df = pd.DataFrame(results)[
+        ["model", "max_ratings", "rmse", "mae", "n_predictions"]
+    ]
     os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
     results_df.to_csv(RESULTS_PATH, index=False)
     print(f"\nSaved results to {RESULTS_PATH}\n")
@@ -184,7 +206,9 @@ def main() -> None:
     alt_kwargs = {"k": IBCF_ALT_K, "min_support": IBCF_ALT_MIN_SUPPORT}
     alt_results = run_truncation_sweep(alt_name, ItemBasedCF, alt_kwargs, train, test)
 
-    alt_results_df = pd.DataFrame(alt_results)[["model", "max_ratings", "rmse", "mae", "n_predictions"]]
+    alt_results_df = pd.DataFrame(alt_results)[
+        ["model", "max_ratings", "rmse", "mae", "n_predictions"]
+    ]
     os.makedirs(os.path.dirname(IBCF_ALT_RESULTS_PATH), exist_ok=True)
     alt_results_df.to_csv(IBCF_ALT_RESULTS_PATH, index=False)
     print(f"\nSaved results to {IBCF_ALT_RESULTS_PATH}\n")

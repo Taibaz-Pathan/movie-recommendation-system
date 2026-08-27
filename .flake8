@@ -1,0 +1,7 @@
+[flake8]
+max-line-length = 100
+# E402 ignored in scripts/ only: standalone scripts require sys.path
+# insertion before importing from src/, which necessarily comes after
+# the path-fix import. This is intentional, not an ordering mistake.
+per-file-ignores =
+    scripts/*.py:E402

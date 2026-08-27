@@ -20,7 +20,9 @@ class SVDModel:
         random_state: Random seed for reproducibility.
     """
 
-    def __init__(self, n_factors: int = 50, n_epochs: int = 20, random_state: int = 42) -> None:
+    def __init__(
+        self, n_factors: int = 50, n_epochs: int = 20, random_state: int = 42
+    ) -> None:
         self.n_factors = n_factors
         self.n_epochs = n_epochs
         self.random_state = random_state
@@ -44,13 +46,17 @@ class SVDModel:
         trainset = dataset.build_full_trainset()
 
         self._algo = SVD(
-            n_factors=self.n_factors, n_epochs=self.n_epochs, random_state=self.random_state
+            n_factors=self.n_factors,
+            n_epochs=self.n_epochs,
+            random_state=self.random_state,
         )
         self._algo.fit(trainset)
 
         self._users = ratings["userId"].unique()
         self._movies = ratings["movieId"].unique()
-        self._rated_movies_by_user = ratings.groupby("userId")["movieId"].apply(set).to_dict()
+        self._rated_movies_by_user = (
+            ratings.groupby("userId")["movieId"].apply(set).to_dict()
+        )
 
         return self
 
@@ -104,7 +110,9 @@ class SVDModel:
         rated = self._rated_movies_by_user.get(user_id, set())
         candidates = [movie_id for movie_id in self._movies if movie_id not in rated]
 
-        predictions = [(movie_id, self.predict(user_id, movie_id)) for movie_id in candidates]
+        predictions = [
+            (movie_id, self.predict(user_id, movie_id)) for movie_id in candidates
+        ]
         predictions.sort(key=lambda x: (-x[1], x[0]))
         return predictions[:n]
 

@@ -16,6 +16,7 @@ import numpy as np
 # Vector-level similarity (exact, NaN-aware)
 # ---------------------------------------------------------------------------
 
+
 def cosine_similarity(
     u: Union[np.ndarray, list],
     v: Union[np.ndarray, list],
@@ -98,7 +99,7 @@ def pearson_similarity(
     u_c = u_c - u_c.mean()
     v_c = v_c - v_c.mean()
 
-    numerator   = np.dot(u_c, v_c)
+    numerator = np.dot(u_c, v_c)
     denominator = np.sqrt(np.dot(u_c, u_c)) * np.sqrt(np.dot(v_c, v_c))
 
     if denominator == 0.0:
@@ -110,6 +111,7 @@ def pearson_similarity(
 # ---------------------------------------------------------------------------
 # Matrix-level similarity (vectorised, efficient)
 # ---------------------------------------------------------------------------
+
 
 def cosine_similarity_matrix(matrix: np.ndarray) -> np.ndarray:
     """Compute the full cosine similarity matrix for rows of a 2D array.
@@ -167,15 +169,15 @@ def pearson_similarity_matrix(
 
     # Mean-centre each row using that row's overall mean; NaN → 0
     row_means = np.nanmean(matrix, axis=1, keepdims=True)
-    centered  = np.where(np.isnan(matrix), 0.0, matrix - row_means)
+    centered = np.where(np.isnan(matrix), 0.0, matrix - row_means)
 
     # Numerator: pairwise dot products of centred vectors
     # Positions that are NaN in either vector contribute 0 (already zeroed out)
     numerator = centered @ centered.T  # (n, n)
 
     # Denominator: product of L2 norms of centred vectors
-    norms = np.sqrt((centered ** 2).sum(axis=1))  # (n,)
-    denom = np.outer(norms, norms)                 # (n, n)
+    norms = np.sqrt((centered**2).sum(axis=1))  # (n,)
+    denom = np.outer(norms, norms)  # (n, n)
 
     # Pearson correlation; guard against zero denominator
     sim = np.where(denom > 0.0, numerator / denom, 0.0)

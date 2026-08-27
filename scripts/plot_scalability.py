@@ -20,7 +20,13 @@ def main() -> None:
 
     for model_name, color in [("UBCF", "steelblue"), ("IBCF", "darkorange")]:
         subset = df[df["model"] == model_name].sort_values("n_ratings")
-        ax.plot(subset["n_ratings"], subset["fit_time_s"], marker="o", label=model_name, color=color)
+        ax.plot(
+            subset["n_ratings"],
+            subset["fit_time_s"],
+            marker="o",
+            label=model_name,
+            color=color,
+        )
 
     ax.set_xlabel("Training set size (n_ratings)")
     ax.set_ylabel("Fit time (seconds)")

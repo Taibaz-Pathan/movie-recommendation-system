@@ -1,16 +1,18 @@
 import markdown
 import pathlib
 
-md = pathlib.Path('reports/progress_week1_4.md').read_text()
-body = markdown.markdown(md, extensions=['tables'])
+md = pathlib.Path("reports/progress_week1_4.md").read_text()
+body = markdown.markdown(md, extensions=["tables"])
 
-html = """<!DOCTYPE html>
+html = (
+    """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Progress Report — Weeks 1 to 4</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+      rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -124,9 +126,12 @@ html = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-""" + body + """
+"""
+    + body
+    + """
 </body>
 </html>"""
+)
 
-pathlib.Path('reports/progress_week1_4.html').write_text(html)
-print('Done — reports/progress_week1_4.html')
+pathlib.Path("reports/progress_week1_4.html").write_text(html)
+print("Done — reports/progress_week1_4.html")

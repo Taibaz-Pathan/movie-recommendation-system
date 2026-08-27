@@ -37,9 +37,11 @@ def filter_ratings(
         df = df[movie_counts >= min_movie_ratings]
 
     df = df.reset_index(drop=True)
-    print(f"After filtering: {df.shape[0]:,} ratings | "
-          f"{df['userId'].nunique()} users | "
-          f"{df['movieId'].nunique()} movies")
+    print(
+        f"After filtering: {df.shape[0]:,} ratings | "
+        f"{df['userId'].nunique()} users | "
+        f"{df['movieId'].nunique()} movies"
+    )
     return df
 
 
@@ -59,8 +61,10 @@ def build_user_item_matrix(ratings: pd.DataFrame) -> pd.DataFrame:
     matrix = ratings.pivot(index="userId", columns="movieId", values="rating")
     n_users, n_movies = matrix.shape
     sparsity = 1 - matrix.count().sum() / (n_users * n_movies)
-    print(f"User-item matrix: {n_users} users × {n_movies} movies | "
-          f"sparsity: {sparsity * 100:.2f}%")
+    print(
+        f"User-item matrix: {n_users} users × {n_movies} movies | "
+        f"sparsity: {sparsity * 100:.2f}%"
+    )
     return matrix
 
 
@@ -92,21 +96,23 @@ def train_test_split_per_user(
 
     rng = np.random.default_rng(random_state)
     train_indices = []
-    test_indices  = []
+    test_indices = []
 
     for _, user_df in ratings.groupby("userId"):
         idx = user_df.index.tolist()
         n_test = max(1, round(len(idx) * test_size))
-        test_idx  = rng.choice(idx, size=n_test, replace=False).tolist()
+        test_idx = rng.choice(idx, size=n_test, replace=False).tolist()
         train_idx = [i for i in idx if i not in test_idx]
         train_indices.extend(train_idx)
         test_indices.extend(test_idx)
 
     train = ratings.loc[train_indices].reset_index(drop=True)
-    test  = ratings.loc[test_indices].reset_index(drop=True)
+    test = ratings.loc[test_indices].reset_index(drop=True)
 
-    print(f"Train: {len(train):,} ratings | Test: {len(test):,} ratings | "
-          f"Split: {len(train)/len(ratings)*100:.1f}% / {len(test)/len(ratings)*100:.1f}%")
+    print(
+        f"Train: {len(train):,} ratings | Test: {len(test):,} ratings | "
+        f"Split: {len(train)/len(ratings)*100:.1f}% / {len(test)/len(ratings)*100:.1f}%"
+    )
     return train, test
 
 
@@ -124,9 +130,9 @@ def save_splits(
     """
     os.makedirs(output_dir, exist_ok=True)
     train_path = os.path.join(output_dir, "train.csv")
-    test_path  = os.path.join(output_dir, "test.csv")
+    test_path = os.path.join(output_dir, "test.csv")
     train.to_csv(train_path, index=False)
-    test.to_csv(test_path,  index=False)
+    test.to_csv(test_path, index=False)
     print(f"Saved: {train_path}")
     print(f"Saved: {test_path}")
 
@@ -134,7 +140,7 @@ def save_splits(
 if __name__ == "__main__":
     from src.data.loader import load_all
 
-    data    = load_all()
+    data = load_all()
     ratings = data["ratings"]
 
     print("Step 1: Filter ratings")

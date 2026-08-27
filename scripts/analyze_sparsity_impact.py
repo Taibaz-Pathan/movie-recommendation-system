@@ -62,11 +62,13 @@ def bucket_by_support(model, test: pd.DataFrame, buckets) -> pd.DataFrame:
         if not errors:
             continue
         errors = np.array(errors)
-        rows.append({
-            "bucket": label,
-            "rmse": float(np.sqrt(errors.mean())),
-            "n_predictions": len(errors),
-        })
+        rows.append(
+            {
+                "bucket": label,
+                "rmse": float(np.sqrt(errors.mean())),
+                "n_predictions": len(errors),
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -82,7 +84,9 @@ def main() -> None:
 
     print(f"Fitting UBCF (k={ubcf_cfg['k']}, min_support={ubcf_cfg['min_support']})...")
     ubcf = UserBasedCF(
-        k=ubcf_cfg["k"], similarity=ubcf_cfg["similarity"], min_support=ubcf_cfg["min_support"]
+        k=ubcf_cfg["k"],
+        similarity=ubcf_cfg["similarity"],
+        min_support=ubcf_cfg["min_support"],
     )
     ubcf.fit(train_matrix)
 

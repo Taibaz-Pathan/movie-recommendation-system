@@ -39,7 +39,15 @@ def main() -> None:
 
     # Label the "full" point explicitly since it's not a real truncation count.
     ax.axvline(FULL_BASELINE_X, color="gray", linestyle=":", alpha=0.5)
-    ax.text(FULL_BASELINE_X, ax.get_ylim()[1], "full", ha="center", va="bottom", fontsize=8, color="gray")
+    ax.text(
+        FULL_BASELINE_X,
+        ax.get_ylim()[1],
+        "full",
+        ha="center",
+        va="bottom",
+        fontsize=8,
+        color="gray",
+    )
 
     fig.tight_layout()
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
