@@ -30,6 +30,17 @@ SEED = 42
 N_CARD_COLUMNS = 5
 
 POPULAR_MIN_RATINGS = 20  # same threshold as src/data/preprocessor.py's min_movie_ratings
+
+# Purely cosmetic demo labels -- MovieLens is fully anonymized and has no real
+# names. Mapped onto userIds deterministically in build_display_names().
+DISPLAY_NAMES = [
+    "Alex M.", "Priya K.", "Jordan T.", "Sam R.", "Taylor B.",
+    "Morgan L.", "Casey W.", "Riley S.", "Jamie H.", "Avery D.",
+    "Chris P.", "Dana F.", "Quinn G.", "Skyler N.", "Reese V.",
+    "Emerson J.", "Rowan C.", "Hayden Z.", "Kai O.", "Noor A.",
+    "Leo Q.", "Mia X.", "Theo Y.", "Zara I.", "Finn E.",
+    "Ivy U.", "Owen T.", "Luca R.", "Nina W.", "Max B.",
+]
 POPULAR_N_MOVIES = 20
 SEARCH_MAX_RESULTS = 10
 
@@ -207,6 +218,20 @@ def get_dropdown_users(train: pd.DataFrame, n: int, seed: int) -> list:
     rng = np.random.default_rng(seed)
     n = min(n, len(eligible))
     return sorted(rng.choice(eligible, size=n, replace=False).tolist())
+
+
+def build_display_names(user_ids: list, seed: int) -> dict:
+    """Deterministically map each userId to a friendly cosmetic display name.
+
+    Purely cosmetic demo labeling -- MovieLens is fully anonymized and has no
+    real names, and the underlying userId is unaffected everywhere else in
+    the app. Shuffles DISPLAY_NAMES with a seeded RNG and zips it with the
+    sorted userId list for a fixed, reproducible mapping.
+    """
+    rng = np.random.default_rng(seed)
+    shuffled = rng.permutation(DISPLAY_NAMES).tolist()
+    sorted_ids = sorted(user_ids)
+    return {uid: shuffled[i] for i, uid in enumerate(sorted_ids)}
 
 
 def compute_movie_stats(train: pd.DataFrame) -> pd.DataFrame:
@@ -451,12 +476,19 @@ def render_profile_section(
     st.subheader("👤 Profile")
 
     dropdown_users = get_dropdown_users(train, N_DROPDOWN_USERS, SEED)
-    user_id = st.selectbox("Select a user", dropdown_users)
+    display_names = build_display_names(dropdown_users, SEED)
+
+    user_id = st.selectbox(
+        "Select a user", dropdown_users, format_func=lambda uid: display_names[uid]
+    )
 
     if user_id is None:
         return
 
+    display_name = display_names[user_id]
+
     user_ratings = train[train["userId"] == user_id]["rating"]
+    st.markdown(f"**{display_name}** _(User #{user_id})_")
     st.markdown(f"**{len(user_ratings)} ratings given · {user_ratings.mean():.2f} average rating**")
 
     top_rated = top_rated_movies(train, user_id, movies, N_TOP_RATED)
@@ -464,7 +496,7 @@ def render_profile_section(
     ibcf_recs = recommendations_table(ibcf.recommend(user_id, n=N_RECOMMENDATIONS), movies)
     svd_recs = recommendations_table(svd.recommend(user_id, n=N_RECOMMENDATIONS), movies)
 
-    st.markdown(f"#### 🎬 User {user_id}'s Top-Rated Movies")
+    st.markdown(f"#### 🎬 {display_name}'s Top-Rated Movies")
     render_card_row(top_rated, imdb_lookup, context="profile_top_rated")
 
     st.markdown("#### 🤝 Recommended for You (User-Based CF)")
