@@ -93,6 +93,17 @@ CARD_CSS = """
     padding: 4px 9px;
     border-radius: 6px;
 }
+.similarity-badge {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(124, 58, 237, 0.88);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 4px 9px;
+    border-radius: 6px;
+}
 .poster-card {
     background-size: cover;
     background-position: center;
@@ -258,20 +269,34 @@ def primary_genre_gradient(genres: str) -> tuple:
 # ===== card rendering (unchanged card look; now with a Details button per card) =====
 
 
-def render_card_row(items: list, imdb_lookup: dict, context: str) -> None:
+def render_card_row(
+    items: list,
+    imdb_lookup: dict,
+    context: str,
+    badge_icon: str = "★",
+    badge_class: str = "score-badge",
+) -> None:
     """Render a horizontal row of cards for [(movieId, title, genres, score), ...].
 
     Uses a real OMDb poster when available, falling back to the genre-gradient card
     style otherwise. score may be None (e.g. a search result with no training data),
     in which case the badge is omitted. Each card gets a "Details" button that sets
     st.session_state.selected_movie and reruns to show the movie detail view.
+
+    badge_icon/badge_class let callers visually distinguish score types -- e.g.
+    predicted ratings ("★", score-badge) vs IBCF similarity scores ("🔗",
+    similarity-badge) -- without changing anything else about the card.
     """
     cols = st.columns(N_CARD_COLUMNS)
     for i, (col, (movie_id, title, genres, score)) in enumerate(zip(cols, items)):
         safe_title = html.escape(str(title))
         imdb_id = imdb_lookup.get(int(movie_id))
         poster_url = get_poster_url(imdb_id) if imdb_id else None
-        badge_html = f'<div class="score-badge">★ {score:.1f}</div>' if score is not None else ""
+        badge_html = (
+            f'<div class="{badge_class}">{badge_icon} {score:.1f}</div>'
+            if score is not None
+            else ""
+        )
 
         with col:
             if poster_url:
@@ -361,7 +386,10 @@ def render_movie_detail(
     st.subheader("Similar Movies")
     similar = get_similar_movies(movie_id, ibcf, movies, n=N_SIMILAR)
     if similar:
-        render_card_row(similar, imdb_lookup, context="detail_similar")
+        render_card_row(
+            similar, imdb_lookup, context="detail_similar",
+            badge_icon="🔗", badge_class="similarity-badge",
+        )
     else:
         st.info("No similar movies found for this title (not enough co-rating data).")
 
