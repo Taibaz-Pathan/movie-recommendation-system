@@ -4,6 +4,7 @@ import html
 
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 
 from src.data.loader import load_movies
@@ -15,7 +16,9 @@ from src.utils.helpers import load_config
 
 TRAIN_PATH = "data/processed/train.csv"
 TEST_PATH = "data/processed/test.csv"
+LINKS_PATH = "data/raw/ml-latest-small/links.csv"
 COMPARISON_PATH = "reports/full_model_comparison_v2.csv"
+OMDB_URL = "http://www.omdbapi.com/"
 
 MIN_TRAIN_RATINGS = 15
 MAX_TRAIN_RATINGS = 30
@@ -85,6 +88,26 @@ CARD_CSS = """
     padding: 4px 9px;
     border-radius: 6px;
 }
+.poster-card {
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+.poster-title {
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
 </style>
 """
 
@@ -111,7 +134,32 @@ def load_and_train():
     svd = SVDModel(n_factors=50, n_epochs=20, random_state=42)
     svd.fit(train)
 
-    return train, movies, ubcf, ibcf, svd
+    links = pd.read_csv(LINKS_PATH)
+    imdb_lookup = {
+        int(row["movieId"]): f"tt{int(row['imdbId']):07d}" for _, row in links.iterrows()
+    }
+
+    return train, movies, ubcf, ibcf, svd, imdb_lookup
+
+
+@st.cache_data(show_spinner=False)
+def get_poster_url(imdb_id: str) -> str | None:
+    """Fetch a movie's OMDb poster URL. Returns None if unavailable or the call fails."""
+    try:
+        response = requests.get(
+            OMDB_URL,
+            params={"i": imdb_id, "apikey": st.secrets["omdb_api_key"]},
+            timeout=5,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+    poster = data.get("Poster")
+    if not poster or poster == "N/A":
+        return None
+    return poster
 
 
 def get_dropdown_users(train: pd.DataFrame, n: int, seed: int) -> list:
@@ -127,21 +175,23 @@ def get_dropdown_users(train: pd.DataFrame, n: int, seed: int) -> list:
 
 
 def top_rated_movies(train: pd.DataFrame, user_id: int, movies: pd.DataFrame, n: int) -> list:
-    """Return [(title, genres, rating), ...] for a user's top-n rated movies."""
+    """Return [(movieId, title, genres, rating), ...] for a user's top-n rated movies."""
     user_ratings = (
         train[train["userId"] == user_id]
         .sort_values(["rating", "movieId"], ascending=[False, True])
         .head(n)
     )
     merged = user_ratings.merge(movies, on="movieId")
-    return list(zip(merged["title"], merged["genres"], merged["rating"]))
+    return list(zip(merged["movieId"], merged["title"], merged["genres"], merged["rating"]))
 
 
 def recommendations_table(recs: list, movies: pd.DataFrame) -> list:
-    """Return [(title, genres, predicted_score), ...] for a model's recommend() output."""
+    """Return [(movieId, title, genres, predicted_score), ...] for a model's recommend() output."""
     df = pd.DataFrame(recs, columns=["movieId", "predicted_score"])
     merged = df.merge(movies, on="movieId")
-    return list(zip(merged["title"], merged["genres"], merged["predicted_score"]))
+    return list(
+        zip(merged["movieId"], merged["title"], merged["genres"], merged["predicted_score"])
+    )
 
 
 def primary_genre_gradient(genres: str) -> tuple:
@@ -150,23 +200,43 @@ def primary_genre_gradient(genres: str) -> tuple:
     return primary, GENRE_GRADIENTS.get(primary, GENRE_GRADIENTS["default"])
 
 
-def render_card_row(items: list) -> None:
-    """Render a horizontal row of genre-gradient cards for [(title, genres, score), ...]."""
+def render_card_row(items: list, imdb_lookup: dict) -> None:
+    """Render a horizontal row of cards for [(movieId, title, genres, score), ...].
+
+    Uses a real OMDb poster when available, falling back to the genre-gradient
+    card style otherwise.
+    """
     cols = st.columns(N_CARD_COLUMNS)
-    for col, (title, genres, score) in zip(cols, items):
-        genre, gradient = primary_genre_gradient(genres)
+    for col, (movie_id, title, genres, score) in zip(cols, items):
         safe_title = html.escape(str(title))
+        imdb_id = imdb_lookup.get(int(movie_id))
+        poster_url = get_poster_url(imdb_id) if imdb_id else None
+
         with col:
-            st.markdown(
-                f"""
-                <div class="movie-card" style="background:{gradient};">
-                    <div class="genre-tag">{html.escape(genre)}</div>
-                    <div class="movie-title">{safe_title}</div>
-                    <div class="score-badge">★ {score:.1f}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            if poster_url:
+                st.markdown(
+                    f"""
+                    <div class="movie-card poster-card" style="background-image:
+                        linear-gradient(to bottom, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 65%, rgba(0,0,0,0.92) 100%),
+                        url('{poster_url}');">
+                        <div class="poster-title">{safe_title}</div>
+                        <div class="score-badge">★ {score:.1f}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                genre, gradient = primary_genre_gradient(genres)
+                st.markdown(
+                    f"""
+                    <div class="movie-card" style="background:{gradient};">
+                        <div class="genre-tag">{html.escape(genre)}</div>
+                        <div class="movie-title">{safe_title}</div>
+                        <div class="score-badge">★ {score:.1f}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 
 st.set_page_config(page_title="Movie Recommendation System", layout="wide")
@@ -176,7 +246,7 @@ st.title("Movie Recommendation System — Collaborative Filtering Demo")
 st.caption("MovieLens dataset | UBCF, IBCF, and SVD compared")
 
 with st.spinner("Loading and training models..."):
-    train, movies, ubcf, ibcf, svd = load_and_train()
+    train, movies, ubcf, ibcf, svd, imdb_lookup = load_and_train()
 
 dropdown_users = get_dropdown_users(train, N_DROPDOWN_USERS, SEED)
 user_id = st.selectbox("Select a user", dropdown_users)
@@ -188,16 +258,16 @@ if user_id is not None:
     svd_recs = recommendations_table(svd.recommend(user_id, n=N_RECOMMENDATIONS), movies)
 
     st.subheader(f"🎬 User {user_id}'s Top-Rated Movies")
-    render_card_row(top_rated)
+    render_card_row(top_rated, imdb_lookup)
 
     st.subheader("🤝 Recommended for You (User-Based CF)")
-    render_card_row(ubcf_recs)
+    render_card_row(ubcf_recs, imdb_lookup)
 
     st.subheader("🎯 Recommended for You (Item-Based CF)")
-    render_card_row(ibcf_recs)
+    render_card_row(ibcf_recs, imdb_lookup)
 
     st.subheader("🧠 Recommended for You (SVD)")
-    render_card_row(svd_recs)
+    render_card_row(svd_recs, imdb_lookup)
 
 with st.expander("Model Performance Comparison"):
     comparison_df = pd.read_csv(COMPARISON_PATH)

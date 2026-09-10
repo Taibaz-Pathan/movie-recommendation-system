@@ -22,3 +22,6 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+# Secrets
+.streamlit/secrets.toml
