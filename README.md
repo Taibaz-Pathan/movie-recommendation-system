@@ -85,6 +85,28 @@ python src/data/loader.py
 pytest tests/
 ```
 
+### 7. Run the demo app
+
+The Streamlit demo trains UBCF, IBCF and SVD on the processed training split and
+shows each model's recommendations for a selected user. Recommendations that the
+user rated 4★ or higher in the held-out test set are marked **✓ Hit**, using the
+same definition as Precision@K in the evaluation.
+
+```bash
+python src/data/preprocessor.py   # creates data/processed/train.csv and test.csv
+streamlit run app.py
+```
+
+Movie posters are optional. To enable them, add an [OMDb](https://www.omdbapi.com/)
+API key to `.streamlit/secrets.toml`:
+
+```toml
+omdb_api_key = "your-key"
+```
+
+Without a key (or without internet access) the app still runs and shows
+genre-colored cards instead of posters.
+
 ---
 
 ## Project Structure

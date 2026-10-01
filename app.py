@@ -9,6 +9,14 @@ import streamlit as st
 
 from src.data.loader import load_movies
 from src.data.preprocessor import build_user_item_matrix
+from src.evaluation.demo_metrics import (
+    RELEVANCE_THRESHOLD,
+    expected_hits_by_model,
+    format_comparison_table,
+    held_out_liked,
+    hit_summary,
+    relevant_test_items,
+)
 from src.models.ibcf import ItemBasedCF
 from src.models.svd_model import SVDModel
 from src.models.ubcf import UserBasedCF
@@ -115,6 +123,18 @@ CARD_CSS = """
     padding: 4px 9px;
     border-radius: 6px;
 }
+.hit-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(22, 163, 74, 0.95);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
 .poster-card {
     background-size: cover;
     background-position: center;
@@ -163,6 +183,7 @@ def load_and_train():
     ibcf_cfg = config["model"]["ibcf"]
 
     train = pd.read_csv(TRAIN_PATH)
+    test = pd.read_csv(TEST_PATH)
     movies = load_movies()
     train_matrix = build_user_item_matrix(train)
 
@@ -182,16 +203,31 @@ def load_and_train():
         int(row["movieId"]): f"tt{int(row['imdbId']):07d}" for _, row in links.iterrows()
     }
 
-    return train, movies, ubcf, ibcf, svd, imdb_lookup
+    return train, test, movies, ubcf, ibcf, svd, imdb_lookup
+
+
+def get_omdb_api_key() -> str | None:
+    """Return the OMDb API key from Streamlit secrets, or None if it isn't configured.
+
+    A missing .streamlit/secrets.toml or a missing key must not crash the demo;
+    cards then fall back to the genre-gradient style.
+    """
+    try:
+        return st.secrets["omdb_api_key"]
+    except Exception:  # Streamlit raises different errors for missing file vs. missing key
+        return None
 
 
 @st.cache_data(show_spinner=False)
 def get_poster_url(imdb_id: str) -> str | None:
     """Fetch a movie's OMDb poster URL. Returns None if unavailable or the call fails."""
+    api_key = get_omdb_api_key()
+    if not api_key:
+        return None
     try:
         response = requests.get(
             OMDB_URL,
-            params={"i": imdb_id, "apikey": st.secrets["omdb_api_key"]},
+            params={"i": imdb_id, "apikey": api_key},
             timeout=5,
         )
         response.raise_for_status()
@@ -300,6 +336,7 @@ def render_card_row(
     context: str,
     badge_icon: str = "★",
     badge_class: str = "score-badge",
+    hit_ids: set | None = None,
 ) -> None:
     """Render a horizontal row of cards for [(movieId, title, genres, score), ...].
 
@@ -311,6 +348,9 @@ def render_card_row(
     badge_icon/badge_class let callers visually distinguish score types -- e.g.
     predicted ratings ("★", score-badge) vs IBCF similarity scores ("🔗",
     similarity-badge) -- without changing anything else about the card.
+
+    hit_ids, if given, marks cards whose movieId the user rated at or above the
+    relevance threshold in the held-out test set (a "hit" in Precision@K terms).
     """
     cols = st.columns(N_CARD_COLUMNS)
     for i, (col, (movie_id, title, genres, score)) in enumerate(zip(cols, items)):
@@ -322,6 +362,11 @@ def render_card_row(
             if score is not None
             else ""
         )
+        if hit_ids and int(movie_id) in hit_ids:
+            badge_html += (
+                '<div class="hit-badge" title="Rated '
+                f'{RELEVANCE_THRESHOLD:g}+ by this user in the held-out test set">✓ Hit</div>'
+            )
 
         with col:
             if poster_url:
@@ -465,8 +510,36 @@ def render_search_section(
     render_card_rows(items, imdb_lookup, context="search")
 
 
+def render_model_recommendations(
+    heading: str,
+    model_key: str,
+    recs: list,
+    relevant: set,
+    expected_hits: dict,
+    imdb_lookup: dict,
+    context: str,
+) -> None:
+    """Render one model's recommendation row with its hit count for this user."""
+    st.markdown(f"#### {heading}")
+    if relevant:
+        summary = hit_summary([movie_id for movie_id, *_ in recs], relevant)
+        expected = expected_hits_by_model_text(expected_hits, model_key)
+        st.caption(
+            f"Hits for this user: **{summary['n_hits']} / {summary['n_recommended']}**{expected}"
+        )
+    render_card_row(recs, imdb_lookup, context=context, hit_ids=relevant)
+
+
+def expected_hits_by_model_text(expected_hits: dict, model_key: str) -> str:
+    """Format the average-hits reference shown next to a user's hit count."""
+    if model_key not in expected_hits:
+        return ""
+    return f" · average over all test users ≈ {expected_hits[model_key]:.2f}"
+
+
 def render_profile_section(
     train: pd.DataFrame,
+    test: pd.DataFrame,
     movies: pd.DataFrame,
     ubcf: UserBasedCF,
     ibcf: ItemBasedCF,
@@ -488,29 +561,70 @@ def render_profile_section(
     display_name = display_names[user_id]
 
     user_ratings = train[train["userId"] == user_id]["rating"]
+    n_held_out = int((test["userId"] == user_id).sum())
+    relevant = relevant_test_items(test, user_id)
     st.markdown(f"**{display_name}** _(User #{user_id})_")
-    st.markdown(f"**{len(user_ratings)} ratings given · {user_ratings.mean():.2f} average rating**")
+    st.markdown(
+        f"**{len(user_ratings)} ratings given · {user_ratings.mean():.2f} average rating**  \n"
+        f"{n_held_out} further ratings held out for testing, "
+        f"{len(relevant)} of them rated {RELEVANCE_THRESHOLD:g}★ or higher"
+    )
 
     top_rated = top_rated_movies(train, user_id, movies, N_TOP_RATED)
     ubcf_recs = recommendations_table(ubcf.recommend(user_id, n=N_RECOMMENDATIONS), movies)
     ibcf_recs = recommendations_table(ibcf.recommend(user_id, n=N_RECOMMENDATIONS), movies)
     svd_recs = recommendations_table(svd.recommend(user_id, n=N_RECOMMENDATIONS), movies)
 
+    comparison_df = pd.read_csv(COMPARISON_PATH)
+    expected_hits = expected_hits_by_model(comparison_df, N_RECOMMENDATIONS)
+
     st.markdown(f"#### 🎬 {display_name}'s Top-Rated Movies")
+    st.caption("★ = the user's own rating in the training data.")
     render_card_row(top_rated, imdb_lookup, context="profile_top_rated")
 
-    st.markdown("#### 🤝 Recommended for You (User-Based CF)")
-    render_card_row(ubcf_recs, imdb_lookup, context="profile_ubcf")
+    st.divider()
+    st.caption(
+        "★ on recommendation cards = the model's predicted rating. "
+        f"**✓ Hit** = a recommended movie this user rated {RELEVANCE_THRESHOLD:g}★ or higher "
+        "in the held-out test set, which the models never saw during training. "
+        "This is the same definition as Precision@K in the report. With Precision@10 "
+        "around 0.05, a 5-movie list contains about 0.25 hits on average, so zero hits "
+        "is the usual outcome for a single user."
+    )
+    if not relevant:
+        st.info(
+            f"This user rated none of their held-out movies {RELEVANCE_THRESHOLD:g}★ or "
+            "higher, so no hit is possible for any model. The offline evaluation skips "
+            "such users as well."
+        )
 
-    st.markdown("#### 🎯 Recommended for You (Item-Based CF)")
-    render_card_row(ibcf_recs, imdb_lookup, context="profile_ibcf")
+    render_model_recommendations(
+        "🤝 Recommended for You (User-Based CF)", "UBCF", ubcf_recs,
+        relevant, expected_hits, imdb_lookup, context="profile_ubcf",
+    )
+    render_model_recommendations(
+        "🎯 Recommended for You (Item-Based CF)", "IBCF", ibcf_recs,
+        relevant, expected_hits, imdb_lookup, context="profile_ibcf",
+    )
+    render_model_recommendations(
+        "🧠 Recommended for You (SVD)", "SVD", svd_recs,
+        relevant, expected_hits, imdb_lookup, context="profile_svd",
+    )
 
-    st.markdown("#### 🧠 Recommended for You (SVD)")
-    render_card_row(svd_recs, imdb_lookup, context="profile_svd")
+    if relevant:
+        with st.expander(
+            f"🔑 Answer key: held-out movies {display_name} rated "
+            f"{RELEVANCE_THRESHOLD:g}★ or higher"
+        ):
+            st.caption("★ = the user's actual rating, hidden from all models during training.")
+            liked = held_out_liked(test, user_id, movies)
+            render_card_rows(liked, imdb_lookup, context="profile_answer_key")
 
-    with st.expander("Model Performance Comparison"):
-        comparison_df = pd.read_csv(COMPARISON_PATH)
-        st.dataframe(comparison_df, hide_index=True, use_container_width=True)
+    with st.expander("📊 Model Performance Comparison (Table I of the report)"):
+        st.caption("All six models on the same held-out test set of 13,406 ratings.")
+        st.dataframe(
+            format_comparison_table(comparison_df), hide_index=True, use_container_width=True
+        )
 
 
 # ===== app entry point =====
@@ -525,12 +639,22 @@ if "selected_movie" not in st.session_state:
     st.session_state.selected_movie = None
 
 with st.spinner("Loading and training models..."):
-    train, movies, ubcf, ibcf, svd, imdb_lookup = load_and_train()
+    train, test, movies, ubcf, ibcf, svd, imdb_lookup = load_and_train()
 
 movie_stats = compute_movie_stats(train)
 
 section = st.sidebar.radio(
     "Navigate", ["🏠 Popular Movies", "🔍 Search & Recommend", "👤 Profile"]
+)
+
+st.sidebar.divider()
+st.sidebar.markdown("**Model settings**")
+st.sidebar.caption(
+    f"UBCF: Pearson, k = {ubcf.k}, min_support = {ubcf.min_support}  \n"
+    f"IBCF: adjusted cosine, k = {ibcf.k}, min_support = {ibcf.min_support}  \n"
+    f"SVD: {svd.n_factors} factors, {svd.n_epochs} epochs  \n"
+    f"Data: {train['userId'].nunique()} users, {train['movieId'].nunique():,} movies, "
+    f"{len(train):,} train / {len(test):,} test ratings (per-user 80/20 split)"
 )
 
 if st.session_state.selected_movie is not None:
@@ -540,4 +664,4 @@ elif section == "🏠 Popular Movies":
 elif section == "🔍 Search & Recommend":
     render_search_section(movies, movie_stats, imdb_lookup)
 elif section == "👤 Profile":
-    render_profile_section(train, movies, ubcf, ibcf, svd, imdb_lookup)
+    render_profile_section(train, test, movies, ubcf, ibcf, svd, imdb_lookup)
