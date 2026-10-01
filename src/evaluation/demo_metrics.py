@@ -7,6 +7,7 @@ recommendation counts as a hit if it is one of those movies. Keeping this
 logic here (pandas only, no Streamlit) means it can be unit-tested.
 """
 
+import math
 from typing import Dict, Iterable, List, Set, Tuple
 
 import pandas as pd
@@ -119,6 +120,34 @@ def held_out_liked(
         (int(row.movieId), row.title, row.genres, float(row.rating))
         for row in liked.itertuples(index=False)
     ]
+
+
+def experienced_rating_range(
+    train_ratings: pd.DataFrame,
+    light_max: int,
+    lower_quantile: float = 0.75,
+    upper_quantile: float = 0.95,
+) -> Tuple[int, int]:
+    """Training-rating-count range used to pick "experienced" demo users.
+
+    Derived from the data rather than hard-coded, so the group is never empty.
+    The upper quantile leaves out the most extreme raters, who have already
+    rated most of the catalog and so leave few candidates to recommend.
+
+    Args:
+        train_ratings: DataFrame with a userId column, one row per rating.
+        light_max: Upper bound of the light-user group; the experienced range
+            always starts above it so the two groups never overlap.
+        lower_quantile: Quantile of per-user rating counts for the lower bound.
+        upper_quantile: Quantile of per-user rating counts for the upper bound.
+
+    Returns:
+        (min_ratings, max_ratings), inclusive, with min_ratings <= max_ratings.
+    """
+    counts = train_ratings.groupby("userId").size()
+    low = max(math.ceil(counts.quantile(lower_quantile)), light_max + 1)
+    high = int(counts.quantile(upper_quantile))
+    return low, max(low, high)
 
 
 def format_comparison_table(comparison: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:

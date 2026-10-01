@@ -12,6 +12,7 @@ from src.data.preprocessor import build_user_item_matrix
 from src.evaluation.demo_metrics import (
     RELEVANCE_THRESHOLD,
     expected_hits_by_model,
+    experienced_rating_range,
     format_comparison_table,
     held_out_liked,
     hit_summary,
@@ -48,6 +49,15 @@ DISPLAY_NAMES = [
     "Emerson J.", "Rowan C.", "Hayden Z.", "Kai O.", "Noor A.",
     "Leo Q.", "Mia X.", "Theo Y.", "Zara I.", "Finn E.",
     "Ivy U.", "Owen T.", "Luca R.", "Nina W.", "Max B.",
+]
+# Separate cosmetic labels for the experienced-user group, so no name appears
+# in both dropdowns. Same caveat: MovieLens users are anonymous.
+EXPERIENCED_DISPLAY_NAMES = [
+    "Elena V.", "Marcus D.", "Sofia L.", "Arjun P.", "Hannah K.",
+    "Diego M.", "Lena S.", "Omar F.", "Clara B.", "Yusuf T.",
+    "Maya R.", "Jonas H.", "Aisha N.", "Felix W.", "Grace O.",
+    "Ravi C.", "Lucia G.", "Ben A.", "Ines Z.", "Tomas J.",
+    "Anya E.", "Henrik U.", "Selin Y.", "Victor Q.", "Olivia X.",
 ]
 POPULAR_N_MOVIES = 20
 SEARCH_MAX_RESULTS = 10
@@ -244,11 +254,17 @@ def get_poster_url(imdb_id: str) -> str | None:
 # ===== shared data-shaping helpers (unchanged logic, reused across sections) =====
 
 
-def get_dropdown_users(train: pd.DataFrame, n: int, seed: int) -> list:
-    """Pick n userIds with a moderate rating count (a meaningful taste profile)."""
+def get_dropdown_users(
+    train: pd.DataFrame,
+    n: int,
+    seed: int,
+    min_ratings: int = MIN_TRAIN_RATINGS,
+    max_ratings: int = MAX_TRAIN_RATINGS,
+) -> list:
+    """Pick n userIds whose training-rating count lies in [min_ratings, max_ratings]."""
     rating_counts = train.groupby("userId").size()
     eligible = rating_counts[
-        (rating_counts >= MIN_TRAIN_RATINGS) & (rating_counts <= MAX_TRAIN_RATINGS)
+        (rating_counts >= min_ratings) & (rating_counts <= max_ratings)
     ].index.to_numpy()
 
     rng = np.random.default_rng(seed)
@@ -256,7 +272,7 @@ def get_dropdown_users(train: pd.DataFrame, n: int, seed: int) -> list:
     return sorted(rng.choice(eligible, size=n, replace=False).tolist())
 
 
-def build_display_names(user_ids: list, seed: int) -> dict:
+def build_display_names(user_ids: list, seed: int, names: list = DISPLAY_NAMES) -> dict:
     """Deterministically map each userId to a friendly cosmetic display name.
 
     Purely cosmetic demo labeling -- MovieLens is fully anonymized and has no
@@ -265,7 +281,7 @@ def build_display_names(user_ids: list, seed: int) -> dict:
     sorted userId list for a fixed, reproducible mapping.
     """
     rng = np.random.default_rng(seed)
-    shuffled = rng.permutation(DISPLAY_NAMES).tolist()
+    shuffled = rng.permutation(names).tolist()
     sorted_ids = sorted(user_ids)
     return {uid: shuffled[i] for i, uid in enumerate(sorted_ids)}
 
@@ -548,11 +564,37 @@ def render_profile_section(
 ) -> None:
     st.subheader("👤 Profile")
 
-    dropdown_users = get_dropdown_users(train, N_DROPDOWN_USERS, SEED)
-    display_names = build_display_names(dropdown_users, SEED)
+    exp_min, exp_max = experienced_rating_range(train, light_max=MAX_TRAIN_RATINGS)
+    light_label = f"Light users ({MIN_TRAIN_RATINGS}–{MAX_TRAIN_RATINGS} ratings)"
+    experienced_label = f"Experienced users ({exp_min}–{exp_max} ratings)"
+    group = st.radio("User group", [light_label, experienced_label], horizontal=True)
+
+    if group == experienced_label:
+        dropdown_users = get_dropdown_users(
+            train, N_DROPDOWN_USERS, SEED, min_ratings=exp_min, max_ratings=exp_max
+        )
+        display_names = build_display_names(dropdown_users, SEED, EXPERIENCED_DISPLAY_NAMES)
+        st.caption(
+            "Users between the 75th and 95th percentile of training ratings: "
+            "neighborhood models have much more history to compare against."
+        )
+    else:
+        dropdown_users = get_dropdown_users(train, N_DROPDOWN_USERS, SEED)
+        display_names = build_display_names(dropdown_users, SEED)
+        st.caption(
+            "The least active users in the filtered data: the hardest case for "
+            "neighborhood models, close to the cold-start setting in Section IV-D."
+        )
+
+    if not dropdown_users:
+        st.warning("No users fall in this range in the current data.")
+        return
 
     user_id = st.selectbox(
-        "Select a user", dropdown_users, format_func=lambda uid: display_names[uid]
+        "Select a user",
+        dropdown_users,
+        format_func=lambda uid: display_names[uid],
+        key=f"user_select_{group}",
     )
 
     if user_id is None:

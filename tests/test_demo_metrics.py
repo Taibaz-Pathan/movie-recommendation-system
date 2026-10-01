@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.evaluation.demo_metrics import (
     expected_hits_by_model,
+    experienced_rating_range,
     format_comparison_table,
     held_out_liked,
     hit_summary,
@@ -147,3 +148,25 @@ def test_format_comparison_does_not_modify_input():
     format_comparison_table(raw)
     assert raw.loc[0, "rmse"] == 0.837870390790161
     assert list(raw.columns) == ["model", "rmse"]
+
+
+# --- experienced_rating_range ---
+
+
+def _train_with_counts(counts):
+    rows = [(uid, m) for uid, n in enumerate(counts, start=1) for m in range(n)]
+    return pd.DataFrame(rows, columns=["userId", "movieId"])
+
+
+def test_experienced_range_uses_quantiles():
+    # counts 10, 20, ..., 200 -> 75th pct = 152.5 -> 153; 95th pct = 190.5 -> 190
+    train = _train_with_counts(range(10, 201, 10))
+    assert experienced_rating_range(train, light_max=30) == (153, 190)
+
+
+def test_experienced_range_never_overlaps_light_group():
+    # everyone is light: the range must still start above light_max
+    train = _train_with_counts([16, 18, 20, 22, 25])
+    low, high = experienced_rating_range(train, light_max=30)
+    assert low == 31
+    assert high >= low
