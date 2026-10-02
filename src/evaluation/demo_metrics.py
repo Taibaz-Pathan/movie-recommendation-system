@@ -122,6 +122,41 @@ def held_out_liked(
     ]
 
 
+def star_histogram(ratings: Iterable[float]) -> List[int]:
+    """Count ratings per whole-star bin for a compact 1-5 star histogram.
+
+    Half-star ratings are grouped with the next whole star (0.5 and 1.0 ->
+    1 star, 1.5 and 2.0 -> 2 stars, ..., 4.5 and 5.0 -> 5 stars).
+
+    Args:
+        ratings: Ratings on the 0.5-5.0 scale.
+
+    Returns:
+        List of five counts, for 1 to 5 stars.
+    """
+    counts = [0, 0, 0, 0, 0]
+    for rating in ratings:
+        star = min(5, max(1, math.ceil(rating)))
+        counts[star - 1] += 1
+    return counts
+
+
+def top_contributors(neighbours: List[Dict], n: int = 2) -> List[Dict]:
+    """Pick the neighbour items that pushed an IBCF prediction up the most.
+
+    Args:
+        neighbours: The 'neighbours' list from ItemBasedCF.explain(), sorted
+            by contribution descending.
+        n: Maximum number of items to return.
+
+    Returns:
+        Up to n neighbours with a positive contribution, largest first. Empty
+        if no neighbour raised the prediction, so a caller never presents an
+        item that lowered the score as the reason for a recommendation.
+    """
+    return [item for item in neighbours if item["contribution"] > 0][:n]
+
+
 def experienced_rating_range(
     train_ratings: pd.DataFrame,
     light_max: int,

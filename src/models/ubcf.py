@@ -1,5 +1,7 @@
 """User-Based Collaborative Filtering model."""
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
@@ -82,6 +84,89 @@ class UserBasedCF:
 
         return self
 
+    def _check_fitted_and_known(self, user_id: int, movie_id: int) -> None:
+        """Raise if the model is unfitted or the user/movie is not in the training data."""
+        if self._ratings_matrix is None:
+            raise RuntimeError("Model is not fitted. Call fit() first.")
+        if user_id not in self._ratings_matrix.index:
+            raise ValueError(f"user_id {user_id} not found in training data.")
+        if movie_id not in self._ratings_matrix.columns:
+            raise ValueError(f"movie_id {movie_id} not found in training data.")
+
+    def _select_neighbours(self, user_id: int, movie_id: int) -> Optional[pd.Series]:
+        """Select the neighbours used to predict user_id's rating of movie_id.
+
+        Single source of truth for neighbour selection, shared by prediction
+        and explain() so the explanation always describes the neighbours the
+        prediction was actually computed from.
+
+        Returns:
+            Series of similarity scores indexed by neighbour userId, or None
+            when fewer than min_k valid neighbours exist (the fallback case).
+        """
+        # Similarities to all other users (drop self, drop NaN from min_support)
+        sim_scores = self._sim_matrix[user_id].drop(index=user_id).dropna()
+
+        # Keep only neighbours who have rated the target movie
+        rated_by = self._ratings_matrix[movie_id].dropna().index
+        common = sim_scores.index.intersection(rated_by)
+        if len(common) < self.min_k:
+            return None
+
+        sim_scores = sim_scores[common]
+
+        # Top-k by absolute similarity, then require positive correlation
+        top_k_idx = sim_scores.abs().nlargest(self.k).index
+        sim_scores = sim_scores[top_k_idx]
+        sim_scores = sim_scores[sim_scores > 0]
+
+        if len(sim_scores) < self.min_k:
+            return None
+        return sim_scores
+
+    def explain(self, user_id: int, movie_id: int) -> dict:
+        """Describe the neighbours behind a prediction, for display to a user.
+
+        Args:
+            user_id: The target user's identifier.
+            movie_id: The target movie's identifier.
+
+        Returns:
+            Dict with keys:
+                'fallback': True if too few valid neighbours exist and the
+                    prediction is the user's own mean rating.
+                'n_neighbours': Number of neighbours used (0 on fallback).
+                'neighbour_ratings': The neighbours' ratings of the movie,
+                    most similar neighbour first.
+                'mean_neighbour_rating': Their plain average, or None on
+                    fallback. This is a summary for display; the prediction
+                    itself uses similarity-weighted deviations from each
+                    neighbour's own mean.
+
+        Raises:
+            RuntimeError: If fit() has not been called.
+            ValueError: If user_id or movie_id is not in the training data.
+        """
+        self._check_fitted_and_known(user_id, movie_id)
+
+        sim_scores = self._select_neighbours(user_id, movie_id)
+        if sim_scores is None:
+            return {
+                "fallback": True,
+                "n_neighbours": 0,
+                "neighbour_ratings": [],
+                "mean_neighbour_rating": None,
+            }
+
+        ordered = sim_scores.sort_values(ascending=False)
+        ratings = self._ratings_matrix.loc[ordered.index, movie_id]
+        return {
+            "fallback": False,
+            "n_neighbours": len(ordered),
+            "neighbour_ratings": [float(r) for r in ratings],
+            "mean_neighbour_rating": float(ratings.mean()),
+        }
+
     def _predict_with_support(self, user_id: int, movie_id: int) -> tuple:
         """Predict a rating and report how many valid neighbours backed it.
 
@@ -111,32 +196,12 @@ class UserBasedCF:
             RuntimeError: If fit() has not been called.
             ValueError: If user_id or movie_id is not in the training data.
         """
-        if self._ratings_matrix is None:
-            raise RuntimeError("Model is not fitted. Call fit() first.")
-        if user_id not in self._ratings_matrix.index:
-            raise ValueError(f"user_id {user_id} not found in training data.")
-        if movie_id not in self._ratings_matrix.columns:
-            raise ValueError(f"movie_id {movie_id} not found in training data.")
+        self._check_fitted_and_known(user_id, movie_id)
 
         user_mean = self._user_means[user_id]
 
-        # Similarities to all other users (drop self, drop NaN from min_support)
-        sim_scores = self._sim_matrix[user_id].drop(index=user_id).dropna()
-
-        # Keep only neighbours who have rated the target movie
-        rated_by = self._ratings_matrix[movie_id].dropna().index
-        common = sim_scores.index.intersection(rated_by)
-        if len(common) < self.min_k:
-            return float(np.clip(user_mean, 0.5, 5.0)), 0
-
-        sim_scores = sim_scores[common]
-
-        # Top-k by absolute similarity, then require positive correlation
-        top_k_idx = sim_scores.abs().nlargest(self.k).index
-        sim_scores = sim_scores[top_k_idx]
-        sim_scores = sim_scores[sim_scores > 0]
-
-        if len(sim_scores) < self.min_k:
+        sim_scores = self._select_neighbours(user_id, movie_id)
+        if sim_scores is None:
             return float(np.clip(user_mean, 0.5, 5.0)), 0
 
         neighbour_ratings = self._ratings_matrix.loc[sim_scores.index, movie_id]

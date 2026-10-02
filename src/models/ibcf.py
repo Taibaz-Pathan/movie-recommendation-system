@@ -111,6 +111,35 @@ class ItemBasedCF:
         m_idx = self._get_movie_index(movie_id)
 
         user_mean = self._user_means.iloc[u_idx]
+
+        top_k_idx, top_k_sims, top_k_ratings = self._select_neighbours(u_idx, m_idx)
+        if len(top_k_idx) == 0:
+            return float(np.clip(user_mean, 0.5, 5.0)), 0
+
+        top_k_item_means = self._item_means.iloc[top_k_idx].to_numpy()
+
+        numerator = np.sum(top_k_sims * (top_k_ratings - top_k_item_means))
+        denominator = np.sum(np.abs(top_k_sims))
+
+        target_item_mean = self._item_means.iloc[m_idx]
+        prediction = target_item_mean + numerator / denominator
+        return float(np.clip(prediction, 0.5, 5.0)), len(top_k_idx)
+
+    def _select_neighbours(
+        self, u_idx: int, m_idx: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Select the neighbour items used to predict one (user, movie) pair.
+
+        Single source of truth for neighbour selection, shared by prediction
+        and explain() so the explanation always describes the items the
+        prediction was actually computed from.
+
+        Returns:
+            Tuple of (item indices, similarities to the target item, the
+            user's ratings of those items), ordered by absolute similarity
+            descending. All three are empty when no rated item has a non-zero
+            similarity to the target (the fallback case).
+        """
         user_ratings = self._matrix.iloc[u_idx].to_numpy()
 
         # Similarities of target item to all other items
@@ -124,22 +153,56 @@ class ItemBasedCF:
         # Top-K most similar rated items
         top_k_idx = np.argsort(np.abs(similarities))[::-1][: self.k]
         top_k_sims = similarities[top_k_idx]
-        top_k_ratings = user_ratings[top_k_idx]
 
         valid = top_k_sims != 0.0
-        if not valid.any():
-            return float(np.clip(user_mean, 0.5, 5.0)), 0
+        top_k_idx = top_k_idx[valid]
+        return top_k_idx, top_k_sims[valid], user_ratings[top_k_idx]
 
-        top_k_sims = top_k_sims[valid]
-        top_k_ratings = top_k_ratings[valid]
-        top_k_item_means = self._item_means.iloc[top_k_idx].to_numpy()[valid]
+    def explain(self, user_id: int, movie_id: int) -> dict:
+        """
+        Describe the rated items behind a prediction, for display to a user.
 
-        numerator = np.sum(top_k_sims * (top_k_ratings - top_k_item_means))
-        denominator = np.sum(np.abs(top_k_sims))
+        Parameters
+        ----------
+        user_id : int
+        movie_id : int
 
-        target_item_mean = self._item_means.iloc[m_idx]
-        prediction = target_item_mean + numerator / denominator
-        return float(np.clip(prediction, 0.5, 5.0)), int(valid.sum())
+        Returns
+        -------
+        dict with keys:
+            'fallback' : bool
+                True if no rated item has a non-zero similarity to the target
+                and the prediction is the user's own mean rating.
+            'n_neighbours' : int
+                Number of neighbour items used (0 on fallback).
+            'neighbours' : list of dict
+                One entry per neighbour item with keys 'movieId',
+                'similarity', 'rating' (the user's rating of that item) and
+                'contribution' (similarity * (rating - item mean), the item's
+                term in the prediction numerator). Sorted by contribution
+                descending, so the items that pushed the prediction up most
+                come first.
+        """
+        u_idx = self._get_user_index(user_id)
+        m_idx = self._get_movie_index(movie_id)
+
+        idx, sims, ratings = self._select_neighbours(u_idx, m_idx)
+        if len(idx) == 0:
+            return {"fallback": True, "n_neighbours": 0, "neighbours": []}
+
+        item_means = self._item_means.iloc[idx].to_numpy()
+        contributions = sims * (ratings - item_means)
+        order = np.argsort(-contributions, kind="stable")
+        neighbours = [
+            {
+                "movieId": int(self._movies[idx[i]]),
+                "similarity": float(sims[i]),
+                "rating": float(ratings[i]),
+                "contribution": float(contributions[i]),
+            }
+            for i in order
+        ]
+        return {"fallback": False, "n_neighbours": len(idx), "neighbours": neighbours}
 
     def predict(self, user_id: int, movie_id: int) -> float:
         """

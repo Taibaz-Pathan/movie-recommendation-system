@@ -17,6 +17,8 @@ from src.evaluation.demo_metrics import (
     held_out_liked,
     hit_summary,
     relevant_test_items,
+    star_histogram,
+    top_contributors,
 )
 from src.models.ibcf import ItemBasedCF
 from src.models.svd_model import SVDModel
@@ -35,6 +37,8 @@ N_DROPDOWN_USERS = 25
 N_TOP_RATED = 5
 N_RECOMMENDATIONS = 5
 N_SIMILAR = 5
+N_WHY_ITEMS = 2  # rated movies named in an IBCF explanation
+WHY_TITLE_MAX_CHARS = 34
 SEED = 42
 N_CARD_COLUMNS = 5
 
@@ -144,6 +148,37 @@ CARD_CSS = """
     padding: 3px 8px;
     border-radius: 6px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.why {
+    min-height: 66px;
+    font-size: 12px;
+    line-height: 1.35;
+    opacity: 0.9;
+    margin: 0 2px 6px 2px;
+}
+.why-hist {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 22px;
+    margin-top: 5px;
+}
+.why-bar {
+    flex: 1;
+    min-height: 2px;
+    background: currentColor;
+    opacity: 0.5;
+    border-radius: 2px 2px 0 0;
+}
+.why-axis {
+    display: flex;
+    gap: 3px;
+    font-size: 9px;
+    opacity: 0.65;
+}
+.why-axis span {
+    flex: 1;
+    text-align: center;
 }
 .poster-card {
     background-size: cover;
@@ -343,6 +378,64 @@ def primary_genre_gradient(genres: str) -> tuple:
     return primary, GENRE_GRADIENTS.get(primary, GENRE_GRADIENTS["default"])
 
 
+# ===== "Why this?" explanations =====
+
+
+def shorten_title(title: str, max_chars: int = WHY_TITLE_MAX_CHARS) -> str:
+    """Trim a long movie title so an explanation stays on a few lines."""
+    title = str(title)
+    return title if len(title) <= max_chars else title[: max_chars - 1].rstrip() + "…"
+
+
+def ubcf_why_html(explanation: dict) -> str:
+    """Explain a UBCF prediction: how many similar users rated the movie, and how.
+
+    Shows the neighbours' average and a small 1-5 star histogram of their ratings.
+    """
+    if explanation["fallback"]:
+        return (
+            '<div class="why">Too few similar users rated this movie. '
+            "The score is this user's own average rating.</div>"
+        )
+
+    counts = star_histogram(explanation["neighbour_ratings"])
+    peak = max(counts)
+    bars = "".join(
+        f'<div class="why-bar" style="height:{round(100 * count / peak)}%" '
+        f'title="{count} rated it {star}★"></div>'
+        for star, count in enumerate(counts, start=1)
+    )
+    axis = "".join(f"<span>{star}</span>" for star in range(1, 6))
+    return (
+        f'<div class="why"><b>{explanation["n_neighbours"]}</b> similar users rated it, '
+        f'average <b>{explanation["mean_neighbour_rating"]:.1f}★</b>'
+        f'<div class="why-hist">{bars}</div><div class="why-axis">{axis}</div></div>'
+    )
+
+
+def ibcf_why_html(explanation: dict, titles: dict) -> str:
+    """Explain an IBCF prediction: the rated movies that raised the score the most."""
+    if explanation["fallback"]:
+        return (
+            '<div class="why">None of the movies this user rated is similar to this one. '
+            "The score is this user's own average rating.</div>"
+        )
+
+    top = top_contributors(explanation["neighbours"], n=N_WHY_ITEMS)
+    if not top:
+        return (
+            f'<div class="why">Based on <b>{explanation["n_neighbours"]}</b> movies this '
+            "user rated; none of them raised the score.</div>"
+        )
+
+    parts = [
+        f"<i>{html.escape(shorten_title(titles.get(item['movieId'], item['movieId'])))}</i> "
+        f"<b>{item['rating']:g}★</b>"
+        for item in top
+    ]
+    return f'<div class="why">Because this user rated {" and ".join(parts)}</div>'
+
+
 # ===== card rendering (unchanged card look; now with a Details button per card) =====
 
 
@@ -353,6 +446,7 @@ def render_card_row(
     badge_icon: str = "★",
     badge_class: str = "score-badge",
     hit_ids: set | None = None,
+    why_html: dict | None = None,
 ) -> None:
     """Render a horizontal row of cards for [(movieId, title, genres, score), ...].
 
@@ -367,6 +461,8 @@ def render_card_row(
 
     hit_ids, if given, marks cards whose movieId the user rated at or above the
     relevance threshold in the held-out test set (a "hit" in Precision@K terms).
+
+    why_html, if given, maps movieId to a short HTML explanation shown under the card.
     """
     cols = st.columns(N_CARD_COLUMNS)
     for i, (col, (movie_id, title, genres, score)) in enumerate(zip(cols, items)):
@@ -409,6 +505,9 @@ def render_card_row(
                     """,
                     unsafe_allow_html=True,
                 )
+
+            if why_html and int(movie_id) in why_html:
+                st.markdown(why_html[int(movie_id)], unsafe_allow_html=True)
 
             if st.button("Details", key=f"details_{context}_{int(movie_id)}_{i}"):
                 st.session_state.selected_movie = int(movie_id)
@@ -534,16 +633,21 @@ def render_model_recommendations(
     expected_hits: dict,
     imdb_lookup: dict,
     context: str,
+    why_note: str,
+    why_html: dict | None = None,
 ) -> None:
-    """Render one model's recommendation row with its hit count for this user."""
+    """Render one model's recommendation row with its hit count and explanations."""
     st.markdown(f"#### {heading}")
+    lines = []
     if relevant:
         summary = hit_summary([movie_id for movie_id, *_ in recs], relevant)
         expected = expected_hits_by_model_text(expected_hits, model_key)
-        st.caption(
+        lines.append(
             f"Hits for this user: **{summary['n_hits']} / {summary['n_recommended']}**{expected}"
         )
-    render_card_row(recs, imdb_lookup, context=context, hit_ids=relevant)
+    lines.append(why_note)
+    st.caption("  \n".join(lines))
+    render_card_row(recs, imdb_lookup, context=context, hit_ids=relevant, why_html=why_html)
 
 
 def expected_hits_by_model_text(expected_hits: dict, model_key: str) -> str:
@@ -640,17 +744,34 @@ def render_profile_section(
             "such users as well."
         )
 
+    titles = movies.set_index("movieId")["title"].to_dict()
+    ubcf_why = {
+        int(movie_id): ubcf_why_html(ubcf.explain(user_id, int(movie_id)))
+        for movie_id, *_ in ubcf_recs
+    }
+    ibcf_why = {
+        int(movie_id): ibcf_why_html(ibcf.explain(user_id, int(movie_id)), titles)
+        for movie_id, *_ in ibcf_recs
+    }
+
     render_model_recommendations(
         "🤝 Recommended for You (User-Based CF)", "UBCF", ubcf_recs,
         relevant, expected_hits, imdb_lookup, context="profile_ubcf",
+        why_note="Why: how many similar users rated each movie, and how "
+        "(bars show their ratings from 1★ to 5★).",
+        why_html=ubcf_why,
     )
     render_model_recommendations(
         "🎯 Recommended for You (Item-Based CF)", "IBCF", ibcf_recs,
         relevant, expected_hits, imdb_lookup, context="profile_ibcf",
+        why_note="Why: the movies this user rated that raised each prediction the most.",
+        why_html=ibcf_why,
     )
     render_model_recommendations(
         "🧠 Recommended for You (SVD)", "SVD", svd_recs,
         relevant, expected_hits, imdb_lookup, context="profile_svd",
+        why_note="No per-movie explanation: SVD predicts from 50 learned factors "
+        "that have no individual meaning.",
     )
 
     if relevant:
