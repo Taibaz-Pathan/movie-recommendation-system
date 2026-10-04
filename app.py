@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+from streamlit import config as st_config
 
 from src.data.loader import load_movies
 from src.data.preprocessor import build_user_item_matrix
@@ -852,9 +853,29 @@ def render_profile_section(
         )
 
 
+# ===== theme switch =====
+
+
+def sync_theme_with_switch() -> None:
+    """Apply the sidebar's dark-mode switch to Streamlit's theme.
+
+    Streamlit sends its theme setting to the browser at the start of each run.
+    So when the switch and the setting disagree, the setting is updated and the
+    script is rerun once; the rerun delivers the new theme. The setting belongs
+    to the local server, which suits a demo with one presenter.
+    """
+    if "dark_mode" not in st.session_state:
+        return
+    wanted = "dark" if st.session_state.dark_mode else "light"
+    if st.get_option("theme.base") != wanted:
+        st_config.set_option("theme.base", wanted)
+        st.rerun()
+
+
 # ===== app entry point =====
 
 st.set_page_config(page_title="Movie Recommendation System", layout="wide")
+sync_theme_with_switch()
 st.markdown(CARD_CSS, unsafe_allow_html=True)
 
 st.title("Movie Recommendation System")
@@ -881,7 +902,7 @@ section = st.sidebar.radio(
 )
 
 st.sidebar.divider()
-st.sidebar.markdown("**Model settings**")
+st.sidebar.markdown('<div class="side-label">Model settings</div>', unsafe_allow_html=True)
 st.sidebar.caption(
     f"UBCF: Pearson, k = {ubcf.k}, min_support = {ubcf.min_support}  \n"
     f"IBCF: adjusted cosine, k = {ibcf.k}, min_support = {ibcf.min_support}  \n"
@@ -889,6 +910,10 @@ st.sidebar.caption(
     f"Data: {train['userId'].nunique()} users, {train['movieId'].nunique():,} movies, "
     f"{len(train):,} train / {len(test):,} test ratings (per-user 80/20 split)"
 )
+
+st.sidebar.divider()
+st.sidebar.markdown('<div class="side-label">Appearance</div>', unsafe_allow_html=True)
+st.sidebar.toggle("Dark mode", value=st.get_option("theme.base") != "light", key="dark_mode")
 
 if st.session_state.selected_movie is not None:
     render_movie_detail(st.session_state.selected_movie, movies, movie_stats, ibcf, imdb_lookup)
