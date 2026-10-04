@@ -524,7 +524,7 @@ def render_card_row(
     st.session_state.selected_movie and reruns to show the movie detail view.
 
     badge_icon/badge_class let callers visually distinguish score types -- e.g.
-    predicted ratings ("★", score-badge) vs IBCF similarity scores ("🔗",
+    predicted ratings ("★", score-badge) vs IBCF similarity scores ("sim",
     similarity-badge) -- without changing anything else about the card.
 
     hit_ids, if given, marks cards whose movieId the user rated at or above the
@@ -641,7 +641,7 @@ def render_movie_detail(
     if similar:
         render_card_row(
             similar, imdb_lookup, context="detail_similar",
-            badge_icon="🔗", badge_class="similarity-badge",
+            badge_icon="sim", badge_class="similarity-badge",
         )
     else:
         st.info("No similar movies found for this title (not enough co-rating data).")
@@ -651,10 +651,10 @@ def render_movie_detail(
 
 
 def render_popular_section(train: pd.DataFrame, movies: pd.DataFrame, imdb_lookup: dict) -> None:
-    st.subheader("🏠 Popular Movies")
+    st.subheader("Popular Movies")
     st.caption(
-        f"Highest average rating among movies with at least {POPULAR_MIN_RATINGS} ratings. "
-        "Not personalized: every user sees the same list."
+        f"Highest average rating, minimum {POPULAR_MIN_RATINGS} ratings. "
+        "The same list for every user."
     )
 
     stats = compute_movie_stats(train)
@@ -672,8 +672,8 @@ def render_popular_section(train: pd.DataFrame, movies: pd.DataFrame, imdb_looku
 def render_search_section(
     movies: pd.DataFrame, stats: pd.DataFrame, imdb_lookup: dict
 ) -> None:
-    st.subheader("🔍 Search")
-    st.caption("Find a movie, then open Details to see similar movies (Item-Based CF).")
+    st.subheader("Search")
+    st.caption("Search by title. Details shows similar movies from Item-Based CF.")
     query = st.text_input("Search for a movie by title")
 
     if not query:
@@ -709,13 +709,13 @@ def render_model_recommendations(
     why_html: dict | None = None,
 ) -> None:
     """Render one model's recommendation row with its hit count and explanations."""
-    st.markdown(f"#### {heading}")
+    st.markdown(f"##### {heading}")
     lines = []
     if relevant:
         summary = hit_summary([movie_id for movie_id, *_ in recs], relevant)
         expected = expected_hits_by_model_text(expected_hits, model_key)
         lines.append(
-            f"Hits for this user: **{summary['n_hits']} / {summary['n_recommended']}**{expected}"
+            f"Hits: **{summary['n_hits']} / {summary['n_recommended']}**{expected}"
         )
     lines.append(why_note)
     st.caption("  \n".join(lines))
@@ -726,7 +726,7 @@ def expected_hits_by_model_text(expected_hits: dict, model_key: str) -> str:
     """Format the average-hits reference shown next to a user's hit count."""
     if model_key not in expected_hits:
         return ""
-    return f" · average over all test users ≈ {expected_hits[model_key]:.2f}"
+    return f" · average across users ≈ {expected_hits[model_key]:.2f}"
 
 
 def render_profile_section(
@@ -738,7 +738,7 @@ def render_profile_section(
     svd: SVDModel,
     imdb_lookup: dict,
 ) -> None:
-    st.subheader("👤 Profile")
+    st.subheader("Profile")
 
     exp_min, exp_max = experienced_rating_range(train, light_max=MAX_TRAIN_RATINGS)
     light_label = f"Light users ({MIN_TRAIN_RATINGS}–{MAX_TRAIN_RATINGS} ratings)"
@@ -750,16 +750,12 @@ def render_profile_section(
             train, N_DROPDOWN_USERS, SEED, min_ratings=exp_min, max_ratings=exp_max
         )
         display_names = build_display_names(dropdown_users, SEED, EXPERIENCED_DISPLAY_NAMES)
-        st.caption(
-            "Users between the 75th and 95th percentile of training ratings: "
-            "neighborhood models have much more history to compare against."
-        )
+        st.caption("75th to 95th percentile by number of training ratings.")
     else:
         dropdown_users = get_dropdown_users(train, N_DROPDOWN_USERS, SEED)
         display_names = build_display_names(dropdown_users, SEED)
         st.caption(
-            "The least active users in the filtered data: the hardest case for "
-            "neighborhood models, close to the cold-start setting in Section IV-D."
+            "The fewest training ratings in the data. Hardest case for the neighborhood models."
         )
 
     if not dropdown_users:
@@ -781,11 +777,11 @@ def render_profile_section(
     user_ratings = train[train["userId"] == user_id]["rating"]
     n_held_out = int((test["userId"] == user_id).sum())
     relevant = relevant_test_items(test, user_id)
-    st.markdown(f"**{display_name}** _(User #{user_id})_")
-    st.markdown(
-        f"**{len(user_ratings)} ratings given · {user_ratings.mean():.2f} average rating**  \n"
-        f"{n_held_out} further ratings held out for testing, "
-        f"{len(relevant)} of them rated {RELEVANCE_THRESHOLD:g}★ or higher"
+    st.markdown(f"**{display_name}** (user {user_id})")
+    st.caption(
+        f"{len(user_ratings)} training ratings · average {user_ratings.mean():.2f} · "
+        f"{n_held_out} held out for testing, {len(relevant)} of them "
+        f"{RELEVANCE_THRESHOLD:g}★ or higher"
     )
 
     top_rated = top_rated_movies(train, user_id, movies, N_TOP_RATED)
@@ -796,25 +792,22 @@ def render_profile_section(
     comparison_df = pd.read_csv(COMPARISON_PATH)
     expected_hits = expected_hits_by_model(comparison_df, N_RECOMMENDATIONS)
 
-    st.markdown(f"#### 🎬 {display_name}'s Top-Rated Movies")
-    st.caption("★ = the user's own rating in the training data.")
+    st.markdown("#### Top-rated by this user")
+    st.caption("★ = this user's rating")
     render_card_row(top_rated, imdb_lookup, context="profile_top_rated")
 
     st.divider()
-    st.caption(
-        "★ on recommendation cards = the model's predicted rating. "
-        f"**✓ Hit** = a recommended movie this user rated {RELEVANCE_THRESHOLD:g}★ or higher "
-        "in the held-out test set, which the models never saw during training. "
-        "This is the same definition as Precision@K in the report. With Precision@10 "
-        "around 0.05, a 5-movie list contains about 0.25 hits on average, so zero hits "
-        "is the usual outcome for a single user."
+    st.markdown("#### Recommendations")
+    legend = (
+        f"★ = predicted rating · ✓ Hit = rated {RELEVANCE_THRESHOLD:g}★ or higher "
+        "in this user's held-out test ratings"
     )
     if not relevant:
-        st.info(
-            f"This user rated none of their held-out movies {RELEVANCE_THRESHOLD:g}★ or "
-            "higher, so no hit is possible for any model. The offline evaluation skips "
-            "such users as well."
+        legend += (
+            f"  \nThis user has no held-out rating of {RELEVANCE_THRESHOLD:g}★ or higher, "
+            "so no hits are possible. The evaluation skips such users too."
         )
+    st.caption(legend)
 
     titles = movies.set_index("movieId")["title"].to_dict()
     ubcf_why = {
@@ -827,35 +820,32 @@ def render_profile_section(
     }
 
     render_model_recommendations(
-        "🤝 Recommended for You (User-Based CF)", "UBCF", ubcf_recs,
+        "User-Based CF", "UBCF", ubcf_recs,
         relevant, expected_hits, imdb_lookup, context="profile_ubcf",
-        why_note="Why: how many similar users rated each movie, and how "
-        "(bars show their ratings from 1★ to 5★).",
+        why_note="Below each card: similar users who rated the movie, "
+        "and their ratings from 1★ to 5★.",
         why_html=ubcf_why,
     )
     render_model_recommendations(
-        "🎯 Recommended for You (Item-Based CF)", "IBCF", ibcf_recs,
+        "Item-Based CF", "IBCF", ibcf_recs,
         relevant, expected_hits, imdb_lookup, context="profile_ibcf",
-        why_note="Why: the movies this user rated that raised each prediction the most.",
+        why_note="Below each card: the rated movies that raised the prediction most.",
         why_html=ibcf_why,
     )
     render_model_recommendations(
-        "🧠 Recommended for You (SVD)", "SVD", svd_recs,
+        "SVD", "SVD", svd_recs,
         relevant, expected_hits, imdb_lookup, context="profile_svd",
-        why_note="No per-movie explanation: SVD predicts from 50 learned factors "
-        "that have no individual meaning.",
+        why_note="No per-movie explanation. The 50 learned factors are not "
+        "individually interpretable.",
     )
 
     if relevant:
-        with st.expander(
-            f"🔑 Answer key: held-out movies {display_name} rated "
-            f"{RELEVANCE_THRESHOLD:g}★ or higher"
-        ):
-            st.caption("★ = the user's actual rating, hidden from all models during training.")
+        with st.expander(f"Held-out movies rated {RELEVANCE_THRESHOLD:g}★ or higher"):
+            st.caption("★ = this user's actual rating. Hidden from all models during training.")
             liked = held_out_liked(test, user_id, movies)
             render_card_rows(liked, imdb_lookup, context="profile_answer_key")
 
-    with st.expander("📊 Model Performance Comparison (Table I of the report)"):
+    with st.expander("Model comparison (Table I)"):
         st.caption("All six models on the same held-out test set of 13,406 ratings.")
         st.dataframe(
             format_comparison_table(comparison_df), hide_index=True, use_container_width=True
