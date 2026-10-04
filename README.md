@@ -10,11 +10,17 @@
 
 This project implements a movie recommendation system using collaborative filtering techniques. It explores both user-based (UBCF) and item-based (IBCF) collaborative filtering approaches applied to the MovieLens dataset. The goal is to predict user ratings for unseen movies and generate personalised top-N recommendations.
 
-Key techniques covered:
-- User-Based Collaborative Filtering (UBCF)
-- Item-Based Collaborative Filtering (IBCF)
-- Evaluation via RMSE and MAE
+What the project covers:
+- User-Based Collaborative Filtering (UBCF, Pearson correlation)
+- Item-Based Collaborative Filtering (IBCF, adjusted cosine similarity)
+- SVD matrix factorization and three non-personalised baselines for comparison
+- Evaluation of rating accuracy (RMSE, MAE) and ranking quality (Precision@K, Recall@K)
+- Hyperparameter grid search and a paired bootstrap significance test
+- Cold-start, sparsity and scalability analyses
+- An interactive Streamlit demo (`app.py`)
 - Exploratory data analysis of rating patterns and sparsity
+
+The final report is in [`report/paper.pdf`](report/paper.pdf).
 
 ---
 
@@ -113,31 +119,48 @@ genre-colored cards instead of posters.
 
 ```
 movie-recsys/
+├── app.py                       # Streamlit demo
 ├── configs/
-│   └── config.yaml          # Centralised configuration
+│   └── config.yaml              # Tuned model settings and split configuration
 ├── data/
-│   ├── raw/                 # Raw downloaded data (not tracked by git)
-│   └── processed/           # Processed/split data (not tracked by git)
-├── notebooks/               # Jupyter notebooks for exploration
-├── reports/
-│   └── figures/             # Generated plots and figures
+│   ├── raw/                     # Raw downloaded data (not tracked by git)
+│   └── processed/               # Train/test split (not tracked by git)
+├── notebooks/
+│   └── eda.ipynb                # Exploratory data analysis
+├── report/
+│   ├── paper.tex                # Final report (IEEE conference format)
+│   ├── paper.pdf
+│   └── figures/
+├── reports/                     # Experiment outputs: result tables, analysis notes
+│   └── figures/                 # Generated plots
+├── scripts/                     # One script per experiment
+│   ├── run_full_pipeline.py     # Train and evaluate all models
+│   ├── tune_hyperparameters.py  # Grid search over k and min_support
+│   ├── statistical_comparison.py  # Paired bootstrap test, UBCF vs IBCF
+│   ├── analyze_cold_start.py    # Cold-start simulation
+│   ├── analyze_sparsity_impact.py
+│   ├── analyze_scalability.py
+│   └── ...                      # Plotting, debugging and export scripts
 ├── src/
 │   ├── data/
-│   │   └── loader.py        # Data loading utilities
+│   │   ├── loader.py            # Data loading utilities
+│   │   └── preprocessor.py      # Filtering and per-user train/test split
 │   ├── models/
-│   │   ├── ubcf.py          # User-Based Collaborative Filtering
-│   │   └── ibcf.py          # Item-Based Collaborative Filtering
+│   │   ├── baselines.py         # Global, user and item mean predictors
+│   │   ├── ubcf.py              # User-Based Collaborative Filtering
+│   │   ├── ibcf.py              # Item-Based Collaborative Filtering
+│   │   └── svd_model.py         # SVD wrapper around scikit-surprise
 │   ├── evaluation/
-│   │   └── metrics.py       # RMSE, MAE evaluation metrics
+│   │   ├── metrics.py           # RMSE, MAE, Precision@K, Recall@K, F1@K
+│   │   └── demo_metrics.py      # Hit and display helpers used by the demo
 │   └── utils/
-│       └── helpers.py       # Config loading, seeding, path helpers
-├── tests/
-│   ├── test_loader.py       # Unit tests for data loader
-│   └── test_metrics.py      # Unit tests for evaluation metrics
-├── .gitignore
-├── README.md
+│       ├── helpers.py           # Config loading, seeding, path helpers
+│       └── similarity.py        # Cosine and Pearson similarity in NumPy
+├── tests/                       # 133 unit and integration tests (pytest)
+├── .streamlit/config.toml       # Demo presentation settings
 ├── requirements.txt
-└── setup.py
+├── setup.py
+└── README.md
 ```
 
 ---
