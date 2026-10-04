@@ -155,7 +155,7 @@ CARD_CSS = """
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 .why {
-    min-height: 80px;
+    min-height: 68px;
     font-size: 12px;
     line-height: 1.35;
     opacity: 0.9;
@@ -223,11 +223,6 @@ div[data-testid="stMainBlockContainer"], .block-container {
     padding-top: 2.5rem;
     max-width: 1300px;
 }
-/* card buttons span the card width so rows line up */
-div[data-testid="stColumn"] div[data-testid="stButton"] > button,
-div[data-testid="column"] div[data-testid="stButton"] > button {
-    width: 100%;
-}
 /* ---- sidebar ---- */
 .side-brand {
     font-size: 20px;
@@ -249,9 +244,12 @@ div[data-testid="column"] div[data-testid="stButton"] > button {
 }
 section[data-testid="stSidebar"] div[role="radiogroup"] {
     gap: 4px;
+    width: 100%;
+    align-items: stretch;
 }
 section[data-testid="stSidebar"] div[role="radiogroup"] > label {
     width: 100%;
+    box-sizing: border-box;
     padding: 9px 12px;
     border-radius: 8px;
     cursor: pointer;
@@ -259,13 +257,18 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label {
 section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
     background: rgba(128, 128, 128, 0.16);
 }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked),
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-selected] {
     background: rgba(255, 75, 75, 0.2);
     font-weight: 600;
 }
-/* hide the radio circle, but never an element that holds the label text */
+/* Hide the radio circle, never an element that holds the label text.
+   Current Streamlit: the circle is the div just before the label's markdown.
+   Older Streamlit: the circle is the label's first div. */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label
+    div:not(:has(p)):has(+ [data-testid="stMarkdownContainer"]),
 section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-of-type:not(:has(p)) {
-    display: none;
+    display: none !important;
 }
 </style>
 """
@@ -495,6 +498,15 @@ def ibcf_why_html(explanation: dict, titles: dict) -> str:
 # ===== card rendering (unchanged card look; now with a Details button per card) =====
 
 
+def full_width_button(label: str, key: str) -> bool:
+    """A button that spans its column, on both current and older Streamlit versions."""
+    try:
+        return st.button(label, key=key, width="stretch")
+    except TypeError:  # Streamlit versions before the `width` parameter
+        return st.button(label, key=key, use_container_width=True)
+
+
+
 def render_card_row(
     items: list,
     imdb_lookup: dict,
@@ -565,7 +577,7 @@ def render_card_row(
             if why_html and int(movie_id) in why_html:
                 st.markdown(why_html[int(movie_id)], unsafe_allow_html=True)
 
-            if st.button("Details", key=f"details_{context}_{int(movie_id)}_{i}"):
+            if full_width_button("Details", key=f"details_{context}_{int(movie_id)}_{i}"):
                 st.session_state.selected_movie = int(movie_id)
                 st.rerun()
 

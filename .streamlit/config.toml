@@ -1,0 +1,9 @@
+# Demo presentation settings. Secrets (the OMDb key) live in secrets.toml, which is gitignored.
+
+[client]
+# Hide developer controls such as the Deploy button while presenting.
+toolbarMode = "viewer"
+
+[theme]
+# Fixed dark theme so the demo looks the same on any laptop or projector.
+base = "dark"
