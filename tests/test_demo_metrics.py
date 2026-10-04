@@ -142,6 +142,27 @@ def test_format_comparison_rounds_and_renames():
     assert table.loc[0, "Precision@10"] == 0.0601
     assert table.loc[0, "Model"] == "SVD"
 
+    # internal model names become readable table labels
+    names = pd.DataFrame(
+        {
+            "model": [
+                "SVD (n_factors=50, n_epochs=20)",
+                "UBCF (k=20, min_support=10)",
+                "IBCF (k=30, min_support=1)",
+                "UserMeanBaseline",
+                "GlobalMeanBaseline",
+            ],
+            "rmse": [0.8379, 0.8430, 0.8769, 0.9128, 0.9990],
+        }
+    )
+    assert list(format_comparison_table(names)["Model"]) == [
+        "SVD (50 factors, 20 epochs)",
+        "User-Based CF (k = 20, min_support = 10)",
+        "Item-Based CF (k = 30, min_support = 1)",
+        "User Mean (baseline)",
+        "Global Mean (baseline)",
+    ]
+
 
 def test_format_comparison_does_not_modify_input():
     raw = pd.DataFrame({"model": ["SVD"], "rmse": [0.837870390790161]})

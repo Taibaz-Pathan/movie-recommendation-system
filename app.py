@@ -849,7 +849,14 @@ def render_profile_section(
     with st.expander("Model comparison (Table I)"):
         st.caption("All six models on the same held-out test set of 13,406 ratings.")
         st.dataframe(
-            format_comparison_table(comparison_df), hide_index=True, use_container_width=True
+            format_comparison_table(comparison_df),
+            hide_index=True,
+            use_container_width=True,
+            # fixed four decimals, so 0.8430 is not shown as 0.843
+            column_config={
+                column: st.column_config.NumberColumn(format="%.4f")
+                for column in ("RMSE", "MAE", "Precision@10", "Recall@10")
+            },
         )
 
 

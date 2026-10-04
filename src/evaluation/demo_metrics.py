@@ -8,6 +8,7 @@ logic here (pandas only, no Streamlit) means it can be unit-tested.
 """
 
 import math
+import re
 from typing import Dict, Iterable, List, Set, Tuple
 
 import pandas as pd
@@ -26,6 +27,15 @@ COMPARISON_COLUMNS = {
 }
 
 MODEL_PREFIXES = ("UBCF", "IBCF", "SVD")
+
+# Internal model names in the results file -> names fit for a table.
+MODEL_NAME_PATTERNS = (
+    (r"^UBCF\b", "User-Based CF"),
+    (r"^IBCF\b", "Item-Based CF"),
+    (r"n_factors=(\d+), n_epochs=(\d+)", r"\1 factors, \2 epochs"),
+    (r"^(Global|User|Item)MeanBaseline$", r"\1 Mean (baseline)"),
+    (r"(\w)=(\w)", r"\1 = \2"),
+)
 
 
 def relevant_test_items(
@@ -185,8 +195,20 @@ def experienced_rating_range(
     return low, max(low, high)
 
 
+def display_model_name(name: str) -> str:
+    """Turn an internal model name into a readable table label.
+
+    Examples: 'UBCF (k=20, min_support=10)' -> 'User-Based CF (k = 20,
+    min_support = 10)'; 'UserMeanBaseline' -> 'User Mean (baseline)'.
+    Names that match no pattern are returned unchanged.
+    """
+    for pattern, replacement in MODEL_NAME_PATTERNS:
+        name = re.sub(pattern, replacement, name)
+    return name
+
+
 def format_comparison_table(comparison: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:
-    """Round metric columns and use readable headers, matching the report's Table I.
+    """Round metrics and use readable headers and model names, matching Table I.
 
     Args:
         comparison: Raw model comparison DataFrame.
@@ -198,4 +220,6 @@ def format_comparison_table(comparison: pd.DataFrame, decimals: int = 4) -> pd.D
     table = comparison.copy()
     numeric = table.select_dtypes("number").columns
     table[numeric] = table[numeric].round(decimals)
+    if "model" in table.columns:
+        table["model"] = table["model"].map(display_model_name)
     return table.rename(columns=COMPARISON_COLUMNS)
