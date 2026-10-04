@@ -38,7 +38,7 @@ N_TOP_RATED = 5
 N_RECOMMENDATIONS = 5
 N_SIMILAR = 5
 N_WHY_ITEMS = 2  # rated movies named in an IBCF explanation
-WHY_TITLE_MAX_CHARS = 34
+WHY_TITLE_MAX_CHARS = 26
 SEED = 42
 N_CARD_COLUMNS = 5
 
@@ -64,6 +64,10 @@ EXPERIENCED_DISPLAY_NAMES = [
     "Anya E.", "Henrik U.", "Selin Y.", "Victor Q.", "Olivia X.",
 ]
 POPULAR_N_MOVIES = 20
+
+NAV_POPULAR = "Popular"
+NAV_SEARCH = "Search"
+NAV_PROFILE = "Profile"
 SEARCH_MAX_RESULTS = 10
 
 GENRE_GRADIENTS = {
@@ -84,12 +88,13 @@ CARD_CSS = """
 .movie-card {
     position: relative;
     width: 100%;
-    height: 220px;
+    aspect-ratio: 2 / 3;
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.35);
     padding: 10px 10px 46px 10px;
     margin-bottom: 6px;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .genre-tag {
     display: inline-block;
@@ -150,7 +155,7 @@ CARD_CSS = """
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 .why {
-    min-height: 66px;
+    min-height: 80px;
     font-size: 12px;
     line-height: 1.35;
     opacity: 0.9;
@@ -182,7 +187,7 @@ CARD_CSS = """
 }
 .poster-card {
     background-size: cover;
-    background-position: center;
+    background-position: center top;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -212,6 +217,55 @@ CARD_CSS = """
     text-align: center;
     padding: 16px;
     box-sizing: border-box;
+}
+/* ---- page layout ---- */
+div[data-testid="stMainBlockContainer"], .block-container {
+    padding-top: 2.5rem;
+    max-width: 1300px;
+}
+/* card buttons span the card width so rows line up */
+div[data-testid="stColumn"] div[data-testid="stButton"] > button,
+div[data-testid="column"] div[data-testid="stButton"] > button {
+    width: 100%;
+}
+/* ---- sidebar ---- */
+.side-brand {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.side-tagline {
+    font-size: 12px;
+    opacity: 0.7;
+    margin: 2px 0 14px 0;
+}
+.side-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 4px;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] {
+    gap: 4px;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+    background: rgba(128, 128, 128, 0.16);
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+    background: rgba(255, 75, 75, 0.2);
+    font-weight: 600;
+}
+/* hide the radio circle, but never an element that holds the label text */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-of-type:not(:has(p)) {
+    display: none;
 }
 </style>
 """
@@ -394,8 +448,8 @@ def ubcf_why_html(explanation: dict) -> str:
     """
     if explanation["fallback"]:
         return (
-            '<div class="why">Too few similar users rated this movie. '
-            "The score is this user's own average rating.</div>"
+            '<div class="why">Too few similar users rated this movie, '
+            "so the score is this user's own average.</div>"
         )
 
     counts = star_histogram(explanation["neighbour_ratings"])
@@ -407,7 +461,7 @@ def ubcf_why_html(explanation: dict) -> str:
     )
     axis = "".join(f"<span>{star}</span>" for star in range(1, 6))
     return (
-        f'<div class="why"><b>{explanation["n_neighbours"]}</b> similar users rated it, '
+        f'<div class="why"><b>{explanation["n_neighbours"]}</b> similar users · '
         f'average <b>{explanation["mean_neighbour_rating"]:.1f}★</b>'
         f'<div class="why-hist">{bars}</div><div class="why-axis">{axis}</div></div>'
     )
@@ -423,9 +477,11 @@ def ibcf_why_html(explanation: dict, titles: dict) -> str:
 
     top = top_contributors(explanation["neighbours"], n=N_WHY_ITEMS)
     if not top:
+        count = explanation["n_neighbours"]
+        noun = "movie" if count == 1 else "movies"
         return (
-            f'<div class="why">Based on <b>{explanation["n_neighbours"]}</b> movies this '
-            "user rated; none of them raised the score.</div>"
+            f'<div class="why">Based on <b>{count}</b> {noun} this user rated; '
+            "none raised the score.</div>"
         )
 
     parts = [
@@ -485,7 +541,7 @@ def render_card_row(
                 st.markdown(
                     f"""
                     <div class="movie-card poster-card" style="background-image:
-                        linear-gradient(to bottom, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 65%, rgba(0,0,0,0.92) 100%),
+                        linear-gradient(to bottom, rgba(0,0,0,0) 45%, rgba(0,0,0,0.82) 68%, rgba(0,0,0,0.96) 100%),
                         url('{poster_url}');">
                         <div class="poster-title">{safe_title}</div>
                         {badge_html}
@@ -584,7 +640,10 @@ def render_movie_detail(
 
 def render_popular_section(train: pd.DataFrame, movies: pd.DataFrame, imdb_lookup: dict) -> None:
     st.subheader("🏠 Popular Movies")
-    st.caption("Community average ratings")
+    st.caption(
+        f"Highest average rating among movies with at least {POPULAR_MIN_RATINGS} ratings. "
+        "Not personalized: every user sees the same list."
+    )
 
     stats = compute_movie_stats(train)
     popular = (
@@ -601,7 +660,8 @@ def render_popular_section(train: pd.DataFrame, movies: pd.DataFrame, imdb_looku
 def render_search_section(
     movies: pd.DataFrame, stats: pd.DataFrame, imdb_lookup: dict
 ) -> None:
-    st.subheader("🔍 Search & Recommend")
+    st.subheader("🔍 Search")
+    st.caption("Find a movie, then open Details to see similar movies (Item-Based CF).")
     query = st.text_input("Search for a movie by title")
 
     if not query:
@@ -795,8 +855,10 @@ def render_profile_section(
 st.set_page_config(page_title="Movie Recommendation System", layout="wide")
 st.markdown(CARD_CSS, unsafe_allow_html=True)
 
-st.title("Movie Recommendation System — Collaborative Filtering Demo")
-st.caption("MovieLens dataset | UBCF, IBCF, and SVD compared")
+st.title("Movie Recommendation System")
+st.caption(
+    "Collaborative filtering on MovieLens · User-Based, Item-Based and SVD compared"
+)
 
 if "selected_movie" not in st.session_state:
     st.session_state.selected_movie = None
@@ -806,8 +868,14 @@ with st.spinner("Loading and training models..."):
 
 movie_stats = compute_movie_stats(train)
 
+st.sidebar.markdown(
+    '<div class="side-brand">Movie Recommender</div>'
+    '<div class="side-tagline">Collaborative filtering demo</div>'
+    '<div class="side-label">Pages</div>',
+    unsafe_allow_html=True,
+)
 section = st.sidebar.radio(
-    "Navigate", ["🏠 Popular Movies", "🔍 Search & Recommend", "👤 Profile"]
+    "Pages", [NAV_POPULAR, NAV_SEARCH, NAV_PROFILE], label_visibility="collapsed"
 )
 
 st.sidebar.divider()
@@ -822,9 +890,9 @@ st.sidebar.caption(
 
 if st.session_state.selected_movie is not None:
     render_movie_detail(st.session_state.selected_movie, movies, movie_stats, ibcf, imdb_lookup)
-elif section == "🏠 Popular Movies":
+elif section == NAV_POPULAR:
     render_popular_section(train, movies, imdb_lookup)
-elif section == "🔍 Search & Recommend":
+elif section == NAV_SEARCH:
     render_search_section(movies, movie_stats, imdb_lookup)
-elif section == "👤 Profile":
+elif section == NAV_PROFILE:
     render_profile_section(train, test, movies, ubcf, ibcf, svd, imdb_lookup)
