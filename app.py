@@ -229,11 +229,7 @@ div[data-testid="stMainBlockContainer"], .block-container {
     font-size: 20px;
     font-weight: 700;
     line-height: 1.2;
-}
-.side-tagline {
-    font-size: 12px;
-    opacity: 0.7;
-    margin: 2px 0 14px 0;
+    margin-bottom: 16px;
 }
 .side-label {
     font-size: 11px;
@@ -900,7 +896,6 @@ movie_stats = compute_movie_stats(train)
 
 st.sidebar.markdown(
     '<div class="side-brand">Movie Recommender</div>'
-    '<div class="side-tagline">Collaborative filtering demo</div>'
     '<div class="side-label">Pages</div>',
     unsafe_allow_html=True,
 )
