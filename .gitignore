@@ -25,6 +25,3 @@ Thumbs.db
 
 # Secrets
 .streamlit/secrets.toml
-
-# Local assistant/editor configuration
-.claude/
