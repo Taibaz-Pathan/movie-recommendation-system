@@ -22,6 +22,21 @@ What the project covers:
 
 The final report is in [`report/paper.pdf`](report/paper.pdf).
 
+**Headline results** (13,406 held-out test ratings, per-user 80/20 split, seed 42):
+
+| Model | RMSE | MAE | P@10 | R@10 |
+|---|---|---|---|---|
+| SVD (50 factors, 20 epochs) | 0.8379 | 0.6435 | 0.0601 | 0.0495 |
+| UBCF (k=20, min_support=10) | 0.8430 | 0.6407 | 0.0499 | 0.0453 |
+| IBCF (k=30, min_support=1) | 0.8769 | 0.6731 | 0.0562 | 0.0382 |
+| User-mean baseline | 0.9128 | 0.7064 | 0.0250 | 0.0246 |
+| Item-mean baseline | 0.9253 | 0.7152 | 0.0365 | 0.0346 |
+| Global-mean baseline | 0.9990 | 0.8000 | 0.0250 | 0.0246 |
+
+The UBCF and IBCF settings were tuned on the test set (no separate validation
+set), and SVD uses default settings, so the comparison is not perfectly even.
+See the report for details and limitations.
+
 ---
 
 ## Dataset
@@ -54,10 +69,14 @@ data/
 
 ## Setup Instructions
 
-### 1. Clone the repository
+Requires Python 3.10 or newer (the pinned NumPy 2.2.3 needs it). `scikit-surprise`
+is compiled during installation, so a working C compiler may be needed.
+
+### 1. Get the code
+
+Unzip the submission, or clone the repository, and change into the folder:
 
 ```bash
-git clone <your-repo-url>
 cd movie-recsys
 ```
 
@@ -112,6 +131,28 @@ omdb_api_key = "your-key"
 
 Without a key (or without internet access) the app still runs and shows
 genre-colored cards instead of posters.
+
+---
+
+## Reproducing the Results
+
+Run these from the project root after the dataset is in `data/raw/`. All experiments
+use a fixed random seed (42). Each script writes its output to
+`reports/` unless noted.
+
+```bash
+python src/data/preprocessor.py              # filter (>= 20 ratings) and per-user 80/20 split
+python scripts/compare_all_models_v2.py      # Table I: all six models -> reports/full_model_comparison_v2.csv
+python scripts/tune_hyperparameters.py       # grid search over k and min_support
+python scripts/statistical_comparison.py     # paired bootstrap, UBCF vs IBCF (prints the result)
+python scripts/analyze_cold_start.py         # cold-start simulation
+python scripts/analyze_sparsity_impact.py    # RMSE by neighbour-support bucket
+python scripts/analyze_scalability.py        # fit time and prediction latency
+```
+
+`scripts/run_full_pipeline.py` runs the data preparation and all six models in one
+go. The `plot_*.py` scripts regenerate the figures from the saved CSVs. Run time
+depends on the machine; the neighbourhood models are the slow part.
 
 ---
 
