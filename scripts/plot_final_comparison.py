@@ -1,4 +1,4 @@
-"""Bar-chart comparison of RMSE and Precision@10 across all 5 models for the final report."""
+"""Bar-chart comparison of RMSE and Precision@10 across all 6 models for the final report."""
 
 import os
 import sys
@@ -9,12 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import matplotlib.pyplot as plt
 import pandas as pd
 
-RESULTS_PATH = os.path.join("reports", "full_model_comparison.csv")
+RESULTS_PATH = os.path.join("reports", "full_model_comparison_v2.csv")
 OUTPUT_PATH = os.path.join("reports", "figures", "final_model_comparison.png")
 
 BASELINE_COLOR = "gray"
 UBCF_COLOR = "steelblue"
 IBCF_COLOR = "darkorange"
+SVD_COLOR = "purple"
 
 
 def bar_color(model_name: str) -> str:
@@ -22,6 +23,8 @@ def bar_color(model_name: str) -> str:
         return UBCF_COLOR
     if model_name.startswith("IBCF"):
         return IBCF_COLOR
+    if model_name.startswith("SVD"):
+        return SVD_COLOR
     return BASELINE_COLOR
 
 
